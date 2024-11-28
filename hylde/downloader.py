@@ -8,8 +8,8 @@ import hylde.jdownloader as hyjdl
 cache_directory = Path(settings.cachedir).resolve()
 
 
-def download_file(url: str) -> str:
-    file_names = hyjdl.download_url(url, cache_directory)
+def download_file(url: str, url_key: str) -> str:
+    file_names = hyjdl.download_url(url, url_key, cache_directory)
 
     if not file_names:
         lolg.error(f"Error while downloading '{url}'")

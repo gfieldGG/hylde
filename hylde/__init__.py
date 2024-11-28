@@ -1,4 +1,3 @@
-from pathlib import Path
 from loguru import logger as lolg
 from dynaconf import Dynaconf  # type:ignore
 

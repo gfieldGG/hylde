@@ -102,10 +102,10 @@ def download_file(url, url_key):
         lolg.success(f"Recovered file '{file_name}' for url_key '{url_key}'")
     else:
         try:
-            file_name = hydl.download_file(url=url)
+            file_name = hydl.download_file(url=url, url_key=url_key)
             set_cached_file(url_key, file_name)
         except Exception as e:  # noqa: E722
-            lolg.error(f"Unhandled error while downloading '{url}': {e}'")
+            lolg.error(f"Unhandled error while downloading '{url_key}': {e}'")
 
     lolg.debug(f"Removing active thread '{url_key}'")
     del active_threads[url_key]

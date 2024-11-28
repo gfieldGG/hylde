@@ -15,10 +15,15 @@ from pyjd.jd_types import (  # type:ignore
 )
 
 from hylde import lolg, settings
-from hylde.util import md5
 
 
 JDD: JDDevice
+
+if (
+    settings.downloader.jdownloader.email == "TO BE SET"
+    or settings.downloader.jdownloader.password == "TO BE SET"
+):
+    raise ValueError("MyJDownloader API credentials not set.")
 
 
 def _call_pyjd(func, retries=3, delay=1, *args, **kwargs):
@@ -34,24 +39,27 @@ def _call_pyjd(func, retries=3, delay=1, *args, **kwargs):
     raise RuntimeError("pyjd call failed")
 
 
-def connect() -> JDDevice:
+def connect() -> JDDevice | None:
     conn = MyJDConnector()
+
+    lolg.debug("Trying to connect to MyJDownloader API...")
     connected = conn.connect(
         settings.downloader.jdownloader.email,
         settings.downloader.jdownloader.password,
     )
     if not connected:
         lolg.error("Error while connecting to MyJDownloader API.")
+        raise RuntimeError("Could not connect to MyJDownloader API.")
     else:
-        lolg.debug("Connected to myJD API.")
+        lolg.debug("Connected to MyJDownloader API.")
 
     if (
         not settings.downloader.jdownloader.devicename
         or settings.downloader.jdownloader.devicename == "TO BE SET"
     ):
-        lolg.info("No MyJDownloader device name configured. Using first device...")
+        lolg.info("No device name configured. Using first device...")
         devices = conn.list_devices()
-        device_name = devices[0].name
+        device_name = devices[0].get("name")
     else:
         device_name = settings.downloader.jdownloader.devicename
 
@@ -206,11 +214,11 @@ def _get_file(file_name: str, package: FilePackage) -> Path | None:
     return full_path
 
 
-def download_url(url: str, target_directory: Path) -> list[str] | None:
+def download_url(url: str, url_key: str, target_directory: Path) -> list[str] | None:
     """Download file for url. Return final filepaths relative to target_directory."""
     connect()
 
-    package_name = md5(url)
+    package_name = url_key
     _call_pyjd(
         JDD.linkgrabber.add_links,
         add_links_query=AddLinksQuery(
