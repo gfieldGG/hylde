@@ -68,7 +68,7 @@ def connect() -> JDDevice | None:
     return JDD
 
 
-def _get_downloader_package(package_name: str) -> FilePackage | None:
+def _get_downloader_packages(package_name: str) -> dict[int, FilePackage] | None:
     packages = _call_pyjd(
         JDD.downloads.query_packages,
         query_params=PackageQuery(
@@ -80,14 +80,14 @@ def _get_downloader_package(package_name: str) -> FilePackage | None:
         ),
     )
 
-    package = next(
-        (package for package in packages if package.name == package_name), None
-    )
+    packages = {
+        package.uuid: package for package in packages if package.name == package_name
+    }
 
-    if package:
-        lolg.trace(f"Found package with name '{package_name}': {package}")
+    if packages:
+        lolg.trace(f"Found {len(packages)} packages with name '{package_name}'")
 
-    return package
+    return packages
 
 
 def _get_downloader_link(link_name: str, package_id: int) -> DownloadLink | None:
@@ -110,14 +110,14 @@ def _get_downloader_link(link_name: str, package_id: int) -> DownloadLink | None
 
 def _wait_for_package_start(
     package_name: str, interval=5, max_retries=20
-) -> int | None:
+) -> dict[int, FilePackage] | None:
     lolg.debug(f"Waiting for package '{package_name}' to start downloading...")
     tries = 0
     while tries < max_retries:
-        package = _get_downloader_package(package_name)
-        if package:
+        packages = _get_downloader_packages(package_name)
+        if packages:
             lolg.debug(f"Found package '{package_name}' in download list.")
-            return package.uuid
+            return packages
         else:
             lolg.trace(f"Package '{package_name}' not in download list (yet).")
 
@@ -132,23 +132,28 @@ def _wait_for_package_start(
 
 def _wait_for_package_finish(
     package_name: str, poll_interval=10, max_retries=100
-) -> FilePackage | None:
+) -> dict[int, FilePackage] | None:
     lolg.debug(f"Waiting for package '{package_name}' to finish downloading...")
     tries = 0
     while tries < max_retries:
-        package = _get_downloader_package(package_name)
-        if package:
-            if package.finished:
-                lolg.debug(f"Package '{package_name}' has finished downloading.'")
-                return package
+        packages = _get_downloader_packages(package_name)
 
-            else:
+        if not packages:
+            lolg.error(f"Package '{package_name}' not in download list anymore.")
+            return None
+
+        all_finished = True
+        for package_id, package in packages.items():
+            if not package.finished:
                 lolg.debug(
                     f"Package '{package_name}' not finished yet. Status: {package.status}"
                 )
-        else:
-            lolg.error(f"Package '{package_name}' not in download list anymore.")
-            return None
+                all_finished = False
+                break
+
+        if all_finished:
+            lolg.debug(f"Packages '{package_name}' have finished downloading.'")
+            return packages
 
         lolg.trace(
             f"Checking status of '{package_name}' again in {poll_interval}s... ({max_retries-tries} tries left)"
@@ -222,29 +227,33 @@ def download_url(url: str, url_key: str) -> list[Path] | None:
 
     lolg.debug(f"Added link '{url}' to package '{package_name}'")
 
-    package_id = _wait_for_package_start(package_name=package_name)
-    if not package_id:
+    packages = _wait_for_package_start(package_name=package_name)
+    if not packages:
         lolg.error(f"Could not add '{url_key}' to downloader.")
         return None
 
-    package = _wait_for_package_finish(package_name)
-    if not package:
+    packages = _wait_for_package_finish(package_name)
+    if not packages:
         lolg.error(f"Timeout while downloading '{url_key}' (package '{package_name}')")
         return None
 
-    filenames = _get_filenames_from_package(package.uuid)
-    lolg.success(f"Found {len(filenames)} downloaded links for url '{url_key}'")
+    filenames_map: dict[int, list[FilePackage]] = {}
+    for package_id in packages:
+        filenames_map[package_id] = _get_filenames_from_package(package_id)
+    lolg.success(f"Found downloaded links for url '{url_key}'")
 
     # resolve filenames to full paths
     full_file_paths = []
-    for fn in filenames:
-        f = _get_full_file_path(fn, package=package)
-        if f:
-            lolg.trace(f"Found full file path '{f}'")
-            full_file_paths.append(f)
-        else:
-            lolg.warning(f"File '{fn}' not found.")
-    lolg.info(f"Removing package '{package_name}' from downloader...")
-    _remove_package_from_downloader(package_id)
+    for package_id, filenames in filenames_map.items():
+        package = packages[package_id]
+        for fn in filenames:
+            f = _get_full_file_path(fn, package=package)
+            if f:
+                lolg.trace(f"Found full file path '{f}'")
+                full_file_paths.append(f)
+            else:
+                lolg.warning(f"File '{fn}' not found.")
+        lolg.info(f"Removing package id '{package_id}' from downloader...")
+        _remove_package_from_downloader(package_id)
 
     return full_file_paths
