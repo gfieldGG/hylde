@@ -111,20 +111,6 @@ def download_file(url, url_key):
     del active_threads[url_key]
 
 
-@app.errorhandler(503)
-def service_unavailable(e):
-    response = make_response("Service Unavailable", 503)
-    response.headers["Content-Type"] = "text/plain"
-    return response
-
-
-@app.errorhandler(429)
-def too_many_requests(e):
-    response = make_response("Too Many Requests", 429)
-    response.headers["Content-Type"] = "text/plain"
-    return response
-
-
 @app.route("/file", methods=["GET"])
 def handle_request():
     """
@@ -144,8 +130,7 @@ def handle_request():
     # check if there is an active downloader
     if url_key in active_threads:
         lolg.debug(f"Found active thread for url '{url_key}'")
-        # unlike 503, hydrus waits for a reasonable amount of time for these
-        abort(429, description="File is being downloaded. Please retry later.")
+        return "File is being downloaded. Please retry later.", 429
     lolg.debug(f"Found no active thread for '{url_key}'")
 
     # check if url is already cached
@@ -156,16 +141,20 @@ def handle_request():
         thread.start()
         active_threads[url_key] = thread
         lolg.debug(f"Started thread for '{url_key}'")
-        abort(503, description="File download started. Please retry later.")
+        return "Download started. Come back later.", 429
+
+    # download has previously failed
     elif cached_filename == "":
         lolg.error(f"Previous download failed for URL '{url_key}'")
-        abort(500, description="Failed to download the file.")
+        return "Failed to download the file.", 500
+
+    # found cache entry
     else:
         cached_file = _get_file(cached_filename)
         if not cached_file.exists():
             lolg.error(f"Cached file missing on disk: {cached_file}")
             remove_cached_file(url_key)
-            abort(503, description="Cached file missing on server. Try again.")
+            return "Cached file missing on server. Try again.", 503
 
         # serve the file
         lolg.success(f"Serving file '{cached_file}' for '{url}'...")
