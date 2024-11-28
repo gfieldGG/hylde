@@ -6,4 +6,5 @@ cachedbfile = "/config/cache.db"
 email = "TO BE SET"
 password = "TO BE SET"
 devicename = "TO BE SET"
-outputdir = "/temp/downloads"
+outputdir = "/output"                 # base directory that jdownloader uses for downloads
+externaloutputdir = "/temp/downloads" # external path to jdl dl base dir

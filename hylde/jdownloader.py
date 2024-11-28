@@ -1,4 +1,3 @@
-import shutil
 import time
 from pathlib import Path
 
@@ -67,16 +66,6 @@ def connect() -> JDDevice | None:
     JDD = conn.get_device(device_name=device_name, refresh_direct_connections=True)
     lolg.success(f"Connected to MyJDownloader device '{JDD.name}'")
     return JDD
-
-
-def _move_file(target_directory: Path, file_path: Path, folder_name: str = "") -> str:
-    file_name = file_path.name
-    (target_directory / folder_name).mkdir(exist_ok=True)
-    lolg.debug(
-        f"Moving '{file_path}' -> '{target_directory / folder_name / file_name}'"
-    )
-    shutil.move(file_path, target_directory / folder_name / file_name)
-    return f"{folder_name}/{file_name}"
 
 
 def _get_downloader_package(package_name: str) -> FilePackage | None:
@@ -187,25 +176,26 @@ def _get_filenames_from_package(package_id: int):
     return filenames
 
 
-def _remove_from_downloader(file_name: str, package_id: int):
-    link = _get_downloader_link(link_name=file_name, package_id=package_id)
-    if not link:
-        lolg.error(f"Found no link '{file_name}' in package '{package_id}'.")
-        return
-
-    lolg.debug(f"Removing '{link.name}' from downloader...")
-    JDD.downloads.cleanup(
+def _remove_package_from_downloader(package_id: int):
+    lolg.debug(f"Removing package '{package_id}' from downloader...")
+    _call_pyjd(
+        JDD.downloads.cleanup,
         delete_action=DeleteAction.DELETE_ALL,
-        mode=Mode.REMOVE_LINKS_AND_DELETE_FILES,
+        mode=Mode.REMOVE_LINKS_ONLY,
         selection_type=SelectionType.SELECTED,
-        link_ids=[link.uuid],
+        package_ids=[package_id],
     )
 
 
-def _get_file(file_name: str, package: FilePackage) -> Path | None:
-    package_subpath = Path(package.saveTo).name
+def _get_full_file_path(file_name: str, package: FilePackage) -> Path | None:
+    package_subpath = Path(package.saveTo).relative_to(
+        settings.downloader.jdownloader.outputdir
+    )
+    lolg.debug(f"Calculated package subpath: {package_subpath}")
     full_path = (
-        Path(settings.downloader.jdownloader.outputdir) / package_subpath / file_name
+        Path(settings.downloader.jdownloader.externaloutputdir)
+        / package_subpath
+        / file_name
     )
     if not full_path.exists():
         lolg.debug(f"File '{full_path}' not found.")
@@ -214,7 +204,7 @@ def _get_file(file_name: str, package: FilePackage) -> Path | None:
     return full_path
 
 
-def download_url(url: str, url_key: str, target_directory: Path) -> list[str] | None:
+def download_url(url: str, url_key: str) -> list[Path] | None:
     """Download file for url. Return final filepaths relative to target_directory."""
     connect()
 
@@ -226,7 +216,7 @@ def download_url(url: str, url_key: str, target_directory: Path) -> list[str] | 
             autoExtract=False,
             links=url,
             packageName=package_name,
-            overwritePackagizerRules=True,
+            overwritePackagizerRules=True,  # need fixed package name
         ),
     )
 
@@ -234,30 +224,27 @@ def download_url(url: str, url_key: str, target_directory: Path) -> list[str] | 
 
     package_id = _wait_for_package_start(package_name=package_name)
     if not package_id:
-        lolg.error(f"Could not add '{url}' to downloader.")
+        lolg.error(f"Could not add '{url_key}' to downloader.")
         return None
 
     package = _wait_for_package_finish(package_name)
     if not package:
-        lolg.error(f"Timeout while downloading '{url}' (package '{package_name}')")
+        lolg.error(f"Timeout while downloading '{url_key}' (package '{package_name}')")
         return None
 
     filenames = _get_filenames_from_package(package.uuid)
-    lolg.success(f"Found {len(filenames)} downloaded links for url '{url}'")
+    lolg.success(f"Found {len(filenames)} downloaded links for url '{url_key}'")
 
-    cached_file_names = []
+    # resolve filenames to full paths
+    full_file_paths = []
     for fn in filenames:
-        f = _get_file(fn, package=package)
+        f = _get_full_file_path(fn, package=package)
         if f:
-            cfn = _move_file(
-                target_directory=target_directory,
-                file_path=f,
-                folder_name=package_name,
-            )
-            cached_file_names.append(cfn)
+            lolg.trace(f"Found full file path '{f}'")
+            full_file_paths.append(f)
         else:
             lolg.warning(f"File '{fn}' not found.")
-        lolg.info(f"Removing file '{fn}' from downloader...")
-        _remove_from_downloader(fn, package_id)
+    lolg.info(f"Removing package '{package_name}' from downloader...")
+    _remove_package_from_downloader(package_id)
 
-    return cached_file_names
+    return full_file_paths
