@@ -1,0 +1,9 @@
+cachedir = "/cache"
+logfile = "/config/hylde.log"
+cachedbfile = "/config/cache.db"
+
+[downloader.jdownloader]
+email = "TO BE SET"
+password = "TO BE SET"
+devicename = "TO BE SET"
+outputdir = "/temp/downloads"
