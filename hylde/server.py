@@ -174,4 +174,4 @@ def handle_request():
 
 if __name__ == "__main__":
     # start server
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=settings.port)
