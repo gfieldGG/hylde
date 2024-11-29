@@ -19,7 +19,7 @@ def _zip_files_to_cache(
     os.makedirs(output_path.parent, exist_ok=True)
     lolg.debug(f"Zipping {len(file_paths)} files to '{output_path}'...")
 
-    # Find the common directory
+    # find the common directory
     common_dir = Path(os.path.commonpath([str(path) for path in file_paths]))
     lolg.debug(f"The common directory is: {common_dir}")
 
@@ -47,15 +47,18 @@ def _move_file_to_cache(
     return file_name
 
 
-def download_file(url: str, url_key: str) -> str:
+def download_file(url: str, url_key: str) -> str | None:
+    """Return single file path relative to cache directory. Return `""` on retryable failure. Return `None` on error."""
     file_paths = hyjdl.download_url(url, url_key)
 
-    if not file_paths:
+    if file_paths is None:
         lolg.error(f"Error while downloading '{url}'")
+        return None
+    elif len(file_paths) == 0:
         return ""
-    if len(file_paths) == 1:
+    elif len(file_paths) == 1:
         file_name = _move_file_to_cache(cache_directory, file_paths[0], url_key)
     else:
         file_name = _zip_files_to_cache(cache_directory, file_paths, url_key)
-
+    lolg.info(f"Moved file to cache: {file_name}")
     return file_name

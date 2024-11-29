@@ -1,7 +1,8 @@
 port = 5000
 cachedir = "/cache"
-logfile = "/config/hylde.log"
 cachedbfile = "/config/cache.db"
+logfile = "/config/hylde.log"
+loglevel = "INFO"
 
 [downloader.jdownloader]
 email = "TO BE SET"

@@ -2,7 +2,7 @@ import os
 import shelve
 import threading
 from pathlib import Path
-from flask import Flask, make_response, request, send_file, abort
+from flask import Flask, request, send_file
 
 from hylde import lolg, settings
 from hylde.util import md5
@@ -38,11 +38,12 @@ def get_cached_file(url_key: str) -> str | None:
     lolg.debug(f"Getting cache entry for url '{url_key}'...")
     with shelve.open(cache_file) as db:
         file_name = db.get(url_key)
-        if file_name == "...":
+
+        if file_name is None:
+            lolg.debug(f"No cache entry for url '{url_key}'")
+        elif file_name == "...":
             raise DeprecationWarning("In-progress markers are obsolete.")
             lolg.debug(f"Found in-progress marker for url '{url_key}'")
-        elif file_name is None:
-            lolg.debug(f"No cache entry for url '{url_key}'")
         elif file_name:
             lolg.debug(f"Found cache entry '{url_key}' -> '{file_name}'")
         else:
@@ -103,7 +104,11 @@ def download_file(url, url_key):
     else:
         try:
             file_name = hydl.download_file(url=url, url_key=url_key)
-            set_cached_file(url_key, file_name)
+            if file_name is None:
+                lolg.info(f"Download failed for '{url_key}'")
+                set_cached_file(url_key, "FAILED")
+            else:
+                set_cached_file(url_key, file_name)
         except Exception as e:  # noqa: E722
             lolg.error(f"Unhandled error while downloading '{url_key}': {e}'")
 
@@ -135,8 +140,10 @@ def handle_request():
 
     # check if url is already cached
     cached_filename = get_cached_file(url_key=url_key)
-    if cached_filename is None:
-        lolg.info("Sending url to downloader...")
+    if not cached_filename:
+        if cached_filename == "":
+            lolg.warning(f"Download '{url_key}' was previously marked as unfinished.")
+        lolg.info(f"Sending '{url_key}' to downloader...")
         thread = threading.Thread(target=download_file, args=(url, url_key))
         thread.start()
         active_threads[url_key] = thread
@@ -144,7 +151,7 @@ def handle_request():
         return "Download started. Come back later.", 429
 
     # download has previously failed
-    elif cached_filename == "":
+    elif cached_filename == "FAILED":
         lolg.error(f"Previous download failed for URL '{url_key}'")
         return "Failed to download the file.", 500
 
@@ -154,7 +161,7 @@ def handle_request():
         if not cached_file.exists():
             lolg.error(f"Cached file missing on disk: {cached_file}")
             remove_cached_file(url_key)
-            return "Cached file missing on server. Try again.", 503
+            return "Cached file missing on server. Downloading again.", 503
 
         # serve the file
         lolg.success(f"Serving file '{cached_file}' for '{url}'...")

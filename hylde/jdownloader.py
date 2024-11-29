@@ -210,7 +210,7 @@ def _get_full_file_path(file_name: str, package: FilePackage) -> Path | None:
 
 
 def download_url(url: str, url_key: str) -> list[Path] | None:
-    """Download file for url. Return final filepaths relative to target_directory."""
+    """Download file for url. Return full file paths. Return empty list on (recoverable) problems. Return None if download failed."""
     connect()
 
     package_name = url_key
@@ -229,13 +229,15 @@ def download_url(url: str, url_key: str) -> list[Path] | None:
 
     packages = _wait_for_package_start(package_name=package_name)
     if not packages:
+        lolg.debug(packages)
         lolg.error(f"Could not add '{url_key}' to downloader.")
         return None
 
     packages = _wait_for_package_finish(package_name)
     if not packages:
-        lolg.error(f"Timeout while downloading '{url_key}' (package '{package_name}')")
-        return None
+        lolg.debug(packages)
+        lolg.warning(f"Timeout while waiting for '{url_key}' to finish.")
+        return []
 
     filenames_map: dict[int, list[FilePackage]] = {}
     for package_id in packages:
