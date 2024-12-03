@@ -1,3 +1,4 @@
+import sys
 from loguru import logger as lolg
 from dynaconf import Dynaconf  # type:ignore
 
@@ -8,5 +9,16 @@ settings = Dynaconf(
 )
 
 # configure Loguru
-lolg.add(settings.logfile, rotation="1 MB", retention="7 days", level=settings.loglevel)
+lolg.remove()
+lolg.add(
+    sys.stdout,
+    level="DEBUG",
+    colorize=True,
+)
+lolg.add(
+    settings.logfile,
+    rotation="1 MB",
+    retention="7 days",
+    level=settings.loglevel,
+)
 lolg.info(f"Writing {settings.loglevel} log to: {settings.logfile}")

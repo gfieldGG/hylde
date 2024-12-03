@@ -17,12 +17,12 @@ jobs:
         uses: crazy-max/ghaction-docker-meta@v2
         with:
           images: |
-            ghcr.io/gfieldgg/hylde
+            ghcr.io/${{ github.repository_owner }}/hylde
           tags: |
             type=ref,event=tag
           labels: |
             org.opencontainers.image.title=hylde
-            org.opencontainers.image.vendor=gfieldgg
+            org.opencontainers.image.vendor=${{ github.repository_owner }}
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v1
