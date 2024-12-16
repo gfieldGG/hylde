@@ -214,24 +214,29 @@ def download_url(url: str, url_key: str) -> list[Path] | None:
     connect()
 
     package_name = url_key
-    _call_pyjd(
-        JDD.linkgrabber.add_links,
-        add_links_query=AddLinksQuery(
-            autostart=True,
-            autoExtract=False,
-            links=url,
-            packageName=package_name,
-            overwritePackagizerRules=True,  # need fixed package name
-        ),
-    )
 
-    lolg.debug(f"Added link '{url}' to package '{package_name}'")
+    # don't add package again if already/still in download list
+    if not _get_downloader_packages(package_name):
+        # add link to linkgrabber
+        _call_pyjd(
+            JDD.linkgrabber.add_links,
+            add_links_query=AddLinksQuery(
+                autostart=True,
+                autoExtract=False,
+                links=url,
+                packageName=package_name,
+                overwritePackagizerRules=True,  # need fixed package name
+            ),
+        )
+        lolg.debug(f"Added link '{url}' to package '{package_name}'")
 
-    packages = _wait_for_package_start(package_name=package_name)
-    if not packages:
-        lolg.debug(packages)
-        lolg.error(f"Could not add '{url_key}' to downloader.")
-        return None
+        packages = _wait_for_package_start(package_name=package_name)
+        if not packages:
+            lolg.debug(packages)
+            lolg.error(f"Could not add '{url_key}' to downloader.")
+            return None
+    else:
+        lolg.debug(f"Package '{package_name}' already in download list.")
 
     packages = _wait_for_package_finish(package_name)
     if not packages:
