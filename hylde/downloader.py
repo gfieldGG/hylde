@@ -23,15 +23,16 @@ def _zip_files_to_cache(
     common_dir = Path(os.path.commonpath([str(path) for path in file_paths]))
     lolg.debug(f"The common directory is: {common_dir}")
 
-    with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+    with zipfile.ZipFile(output_path, "w", zipfile.ZIP_STORED) as zipf:
         for file_path in file_paths:
             # add each file to the ZIP, preserving its relative path
             arcname = file_path.relative_to(common_dir.parent)
             zipf.write(file_path, arcname)
 
     # delete original files
+    lolg.debug("Deleting original files...")
     for file_path in file_paths:
-        lolg.debug(f"Deleting '{file_path}'...")
+        lolg.trace(f"Deleting '{file_path}'...")
         file_path.unlink()
     return file_name
 
@@ -48,7 +49,11 @@ def _move_file_to_cache(
 
 
 def download_file(url: str, url_key: str) -> str | None:
-    """Return single file path relative to cache directory. Return `""` on retryable failure. Return `None` on error."""
+    """
+    Return single file path relative to cache directory.
+    Return `""` on retryable failure.
+    Return `None` on error.
+    """
     file_paths = hyjdl.download_url(url, url_key)
 
     if file_paths is None:

@@ -64,7 +64,7 @@ def connect() -> JDDevice | None:
 
     global JDD
     JDD = conn.get_device(device_name=device_name, refresh_direct_connections=True)
-    lolg.success(f"Connected to MyJDownloader device '{JDD.name}'")
+    lolg.info(f"Connected to MyJDownloader device '{JDD.name}'")
     return JDD
 
 
@@ -182,7 +182,7 @@ def _get_filenames_from_package(package_id: int):
 
 
 def _remove_package_from_downloader(package_id: int):
-    lolg.debug(f"Removing package '{package_id}' from downloader...")
+    lolg.debug(f"Removing package id '{package_id}' from downloader...")
     _call_pyjd(
         JDD.downloads.cleanup,
         delete_action=DeleteAction.DELETE_ALL,
@@ -196,7 +196,7 @@ def _get_full_file_path(file_name: str, package: FilePackage) -> Path | None:
     package_subpath = Path(package.saveTo).relative_to(
         settings.downloader.jdownloader.outputdir
     )
-    lolg.debug(f"Calculated package subpath: {package_subpath}")
+    lolg.trace(f"Calculated package subpath: {package_subpath}")
     full_path = (
         Path(settings.downloader.jdownloader.externaloutputdir)
         / package_subpath
@@ -205,7 +205,7 @@ def _get_full_file_path(file_name: str, package: FilePackage) -> Path | None:
     if not full_path.exists():
         lolg.debug(f"File '{full_path}' not found.")
         return None
-    lolg.debug(f"File exists at '{full_path}'")
+    lolg.trace(f"File exists at '{full_path}'")
     return full_path
 
 
@@ -244,15 +244,15 @@ def download_url(url: str, url_key: str) -> list[Path] | None:
         lolg.warning(f"Timeout while waiting for '{url_key}' to finish.")
         return []
 
-    filenames_map: dict[int, list[FilePackage]] = {}
-    for package_id in packages:
-        filenames_map[package_id] = _get_filenames_from_package(package_id)
-    lolg.success(f"Found downloaded links for url '{url_key}'")
+    full_file_paths: list[Path] = []
+    for package_id, package in packages.items():
+        if "An Error occurred!" in package.status:
+            lolg.error(f"Error in package '{package_id}': {package.status}")
+            full_file_paths = None  # type:ignore
+            break
 
-    # resolve filenames to full paths
-    full_file_paths = []
-    for package_id, filenames in filenames_map.items():
-        package = packages[package_id]
+        filenames = _get_filenames_from_package(package_id)
+        # resolve filenames to full paths
         for fn in filenames:
             f = _get_full_file_path(fn, package=package)
             if f:
@@ -260,7 +260,15 @@ def download_url(url: str, url_key: str) -> list[Path] | None:
                 full_file_paths.append(f)
             else:
                 lolg.warning(f"File '{fn}' not found.")
-        lolg.info(f"Removing package id '{package_id}' from downloader...")
+
+    if full_file_paths:
+        lolg.success(
+            f"Found {len(full_file_paths)} downloaded files for url '{url_key}'"
+        )
+
+    # clean up packages
+    lolg.info(f"Removing package '{package_name}' from downloader...")
+    for package_id in packages:
         _remove_package_from_downloader(package_id)
 
     return full_file_paths
