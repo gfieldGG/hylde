@@ -109,7 +109,7 @@ def _get_downloader_link(link_name: str, package_id: int) -> DownloadLink | None
 
 
 def _wait_for_package_start(
-    package_name: str, interval=5, max_retries=20
+    package_name: str, interval=5, max_retries=24
 ) -> dict[int, FilePackage] | None:
     lolg.debug(f"Waiting for package '{package_name}' to start downloading...")
     tries = 0
@@ -131,7 +131,7 @@ def _wait_for_package_start(
 
 
 def _wait_for_package_finish(
-    package_name: str, poll_interval=10, max_retries=100
+    package_name: str, poll_interval=5, max_retries=120
 ) -> dict[int, FilePackage] | None:
     lolg.debug(f"Waiting for package '{package_name}' to finish downloading...")
     tries = 0
@@ -145,7 +145,7 @@ def _wait_for_package_finish(
         all_finished = True
         for package_id, package in packages.items():
             if not package.finished:
-                lolg.debug(
+                lolg.trace(
                     f"Package '{package_name}' not finished yet. Status: {package.status}"
                 )
                 all_finished = False

@@ -133,10 +133,21 @@ def handle_request():
     lolg.info(f"Received request for url '{url_key}' ({url})")
 
     # check if there is an active downloader
-    if url_key in active_threads:
-        lolg.debug(f"Found active thread for url '{url_key}'")
-        return "File is being downloaded. Please retry later.", 429
-    lolg.debug(f"Found no active thread for '{url_key}'")
+    if thread := active_threads.get(url_key):
+        lolg.debug(
+            f"Found active thread for url '{url_key}'. Waiting for up to {settings.maxtimeout} seconds..."
+        )
+        thread.join(
+            timeout=settings.maxtimeout
+        )  # wait for the thread to finish during this request
+        if thread.is_alive():
+            lolg.debug(
+                f"Download '{url_key}' still not finished after {settings.maxtimeout} seconds."
+            )
+            return "File is being downloaded. Please retry later.", 429
+        lolg.debug(f"Download '{url_key}' seems to have finished now.")
+    else:
+        lolg.debug(f"Found no active thread for '{url_key}'")
 
     # check if url is already cached
     cached_filename = get_cached_file(url_key=url_key)
@@ -153,8 +164,22 @@ def handle_request():
         thread = threading.Thread(target=download_file, args=(url, url_key))
         thread.start()
         active_threads[url_key] = thread
-        lolg.debug(f"Started thread for '{url_key}'")
-        return "Download started. Come back later.", 429
+        lolg.debug(
+            f"Started thread for '{url_key}'. Waiting for up to {settings.maxtimeout} seconds for finish..."
+        )
+        thread.join(
+            timeout=settings.maxtimeout
+        )  # wait for the thread to finish immediately
+        if thread.is_alive():
+            lolg.debug(
+                f"Download '{url_key}' not finished after {settings.maxtimeout} seconds."
+            )
+            return "Download started. Come back later.", 429
+        else:
+            lolg.debug(
+                f"Download '{url_key}' finished within the initial {settings.maxtimeout} seconds."
+            )
+            cached_filename = get_cached_file(url_key=url_key)
 
     # download has previously failed
     elif cached_filename == "FAILED":
@@ -162,16 +187,15 @@ def handle_request():
         return "Failed to download the file.", 500
 
     # found cache entry
-    else:
-        cached_file = _get_file(cached_filename)
-        if not cached_file.exists():
-            lolg.error(f"Cached file missing on disk: {cached_file}")
-            remove_cached_file(url_key)
-            return "Cached file missing on server. Downloading again.", 503
+    cached_file = _get_file(cached_filename)
+    if not cached_file.exists():
+        lolg.error(f"Cached file missing on disk: {cached_file}")
+        remove_cached_file(url_key)
+        return "Cached file missing on server. Please try again.", 503
 
-        # serve the file
-        lolg.success(f"Serving file '{cached_file}' for '{url}'...")
-        return send_file(cached_file)
+    # serve the file
+    lolg.success(f"Serving file '{cached_file}' for '{url}'...")
+    return send_file(cached_file)
 
 
 if __name__ == "__main__":
