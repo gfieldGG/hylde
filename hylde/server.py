@@ -152,14 +152,8 @@ def handle_request():
     # check if url is already cached
     cached_filename = get_cached_file(url_key=url_key)
 
-    # download has failed but can be retried
-    if cached_filename == "":
-        lolg.warning(f"Download '{url_key}' was previously marked as retryable.")
-        remove_cached_file(url_key=url_key)
-        return "Download previously failed. You may try again.", 500
-
     # url not seen before
-    elif cached_filename is None:
+    if cached_filename is None:
         lolg.info(f"Sending '{url_key}' to downloader...")
         thread = threading.Thread(target=download_file, args=(url, url_key))
         thread.start()
@@ -180,6 +174,12 @@ def handle_request():
                 f"Download '{url_key}' finished within the initial {settings.maxtimeout} seconds."
             )
             cached_filename = get_cached_file(url_key=url_key)
+
+    # download has previously failed but can be retried
+    if cached_filename == "":
+        lolg.warning(f"Download '{url_key}' was previously marked as retryable.")
+        remove_cached_file(url_key=url_key)
+        return "Download previously failed. You may try again.", 500
 
     # download has previously failed
     elif cached_filename == "FAILED":
