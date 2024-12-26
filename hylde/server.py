@@ -111,6 +111,7 @@ def download_file(url, url_key):
                 set_cached_file(url_key, file_name)
         except Exception as e:  # noqa: E722
             lolg.error(f"Unhandled error while downloading '{url_key}': {e}'")
+            set_cached_file(url_key, "")
 
     lolg.debug(f"Removing active thread '{url_key}'")
     del active_threads[url_key]
@@ -120,7 +121,7 @@ def download_file(url, url_key):
 def handle_request():
     """
     Handles file requests:
-    - If the file is not downloaded yet, returns 503 (Service Unavailable).
+    - If the file is not downloaded yet, returns 429.
     - If the file is downloaded, serves the file.
     """
     url = request.args.get("url")

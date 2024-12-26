@@ -64,7 +64,7 @@ def connect() -> JDDevice | None:
 
     global JDD
     JDD = conn.get_device(device_name=device_name, refresh_direct_connections=True)
-    lolg.info(f"Connected to MyJDownloader device '{JDD.name}'")
+    lolg.debug(f"Connected to MyJDownloader device '{JDD.name}'")
     return JDD
 
 
