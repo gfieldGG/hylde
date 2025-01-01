@@ -248,7 +248,6 @@ def download_url(url: str, url_key: str) -> list[Path] | None:
     for package_id, package in packages.items():
         if "An Error occurred!" in package.status:
             lolg.error(f"Error in package '{package_id}': {package.status}")
-            full_file_paths = None  # type:ignore
             break
 
         filenames = _get_filenames_from_package(package_id)
