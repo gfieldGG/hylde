@@ -199,6 +199,12 @@ def handle_request():
     return send_file(cached_file)
 
 
+@app.route("/shim")
+def blank_page():
+    """Return a successful blank page for hydrus url parsing shenanigans."""
+    return "", 200  # blank page with a 200 HTTP status code
+
+
 if __name__ == "__main__":
     # start server
     app.run(host="0.0.0.0", port=settings.port)

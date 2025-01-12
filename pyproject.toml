@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "hylde"
-version = "0.6.3"
+version = "0.6.4"
 description = "An external hydrus downloader."
 authors = ["Your Name <you@example.com>"]
 readme = "README.md"
