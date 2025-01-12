@@ -202,7 +202,7 @@ def handle_request():
 @app.route("/shim")
 def blank_page():
     """Return a successful blank page for hydrus url parsing shenanigans."""
-    return "", 200  # blank page with a 200 HTTP status code
+    return " ", 200  # blank page with a 200 HTTP status code
 
 
 if __name__ == "__main__":
