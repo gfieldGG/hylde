@@ -138,9 +138,8 @@ def handle_request():
         lolg.debug(
             f"Found active thread for url '{url_key}'. Waiting for up to {settings.maxtimeout} seconds..."
         )
-        thread.join(
-            timeout=settings.maxtimeout
-        )  # wait for the thread to finish during this request
+        # wait for the thread to finish during this request
+        thread.join(timeout=settings.maxtimeout)
         if thread.is_alive():
             lolg.debug(
                 f"Download '{url_key}' still not finished after {settings.maxtimeout} seconds."
@@ -162,9 +161,8 @@ def handle_request():
         lolg.debug(
             f"Started thread for '{url_key}'. Waiting for up to {settings.maxtimeout} seconds for finish..."
         )
-        thread.join(
-            timeout=settings.maxtimeout
-        )  # wait for the thread to finish immediately
+        # wait for the thread to finish during this request
+        thread.join(timeout=settings.maxtimeout)
         if thread.is_alive():
             lolg.debug(
                 f"Download '{url_key}' not finished after {settings.maxtimeout} seconds."
@@ -180,7 +178,7 @@ def handle_request():
     if cached_filename == "":
         lolg.warning(f"Download '{url_key}' was previously marked as retryable.")
         remove_cached_file(url_key=url_key)
-        return "Download previously failed. You may try again.", 500
+        return "Download previously failed. You may try again.", 503
 
     # download has previously failed
     elif cached_filename == "FAILED":
