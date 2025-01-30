@@ -15,8 +15,10 @@ from pyjd.jd_types import (  # type:ignore
 
 from hylde import lolg, settings
 
-
 JDD: JDDevice
+
+ERROR_MESSAGES = ("An Error occurred!", "File not found")
+
 
 if (
     settings.downloader.jdownloader.email == "TO BE SET"
@@ -246,7 +248,7 @@ def download_url(url: str, url_key: str) -> list[Path] | None:
 
     full_file_paths: list[Path] = []
     for package_id, package in packages.items():
-        if "An Error occurred!" in package.status:
+        if any(error in package.status for error in ERROR_MESSAGES):
             lolg.error(f"Error in package '{package_id}': {package.status}")
             break
 
