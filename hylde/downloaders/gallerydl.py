@@ -1,5 +1,5 @@
-import shutil
 import tempfile
+import uuid
 from pathlib import Path
 
 import gallery_dl as gdl  # type:ignore
@@ -14,10 +14,16 @@ gdl.config.set(("extractor",), "base-directory", output_dir.as_posix())
 
 
 class FileCollector:
-    files: list[Path] = []
+    url_key: str
+    files: list[Path]
+
+    def __init__(self, url_key):
+        self.url_key = url_key
+        self.files = []
+        lolg.debug(f"Created FileCollector for '{url_key}'")
 
     def filepath_hook(self, pathfmt: gallery_dl.path.PathFormat):
-        lolg.trace(f"gallerydl returned filepath: {pathfmt.path}")
+        lolg.debug(f"[{self.url_key}] gallerydl returned filepath: {pathfmt.path}")
         self.files.append(Path(pathfmt.path))
 
 
@@ -40,24 +46,19 @@ class GoodJob(gdl.job.DownloadJob):
 
 def download_url(url: str, url_key: str) -> list[Path] | None:
     """Download file for url. Return full file paths. Return empty list on retryable problems. Return None if download failed."""
-    gdl.config.set(("extractor",), "directory", [url_key])
-    fc = FileCollector()
+    gdl.config.set(("extractor",), "directory", [f"{uuid.uuid4()}"])
+    fc = FileCollector(url_key=url_key)
     job = GoodJob(url)
     job.register_hooks(hooks={"file": fc.filepath_hook})
     job.run()
 
     if not fc.files:
-        directory = output_dir / url_key
-        if directory.exists() and any(directory.iterdir()):
-            lolg.warning(
-                f"gallerydl returned no filepaths for '{url_key}' but '{directory}' contained files."
-            )
-            lolg.warning(f"Deleting files in '{directory}' to allow retry...")
-            shutil.rmtree(directory)
-        else:
-            lolg.error(
-                f"gallerydl returned no filepaths for '{url_key}' and '{directory}' was empty."
-            )
-            return None
+        lolg.error(f"gallerydl returned no filepaths for '{url_key}'.")
+    else:
+        for f in fc.files:
+            if f.parent.name != url_key:
+                lolg.warning(f"{url_key = } {f.parent.name = }")
+            else:
+                lolg.info(f"{url_key = } {f.parent.name = }")
 
     return fc.files
