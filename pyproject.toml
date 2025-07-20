@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "hylde"
-version = "0.6.8"
+version = "0.7.0"
 description = "An external hydrus downloader."
 authors = ["Your Name <you@example.com>"]
 readme = "README.md"
@@ -12,6 +12,7 @@ requests = "^2.32.3"
 loguru = ">=0.7.2"
 pyjd = "^1.0.13"
 dynaconf = "^3.2.10"
+gallery-dl = "^1.30.0"
 
 [tool.poetry.group.dev.dependencies]
 ruff = ">=0.9.9"

@@ -7,9 +7,6 @@ from hylde import lolg, settings
 from hylde.registry import get_downloader_for_url
 
 
-import hylde.downloaders.jdownloader as hyjdl
-
-
 cache_directory = Path(settings.cachedir).resolve()
 
 
@@ -58,7 +55,7 @@ def download_file(url: str, url_key: str) -> str | None:
     """
 
     downloader = get_downloader_for_url(url)
-    lolg.debug(f"Using downloader: {downloader}")
+    lolg.debug(f"Using downloader: {downloader.__name__}")
     file_paths = downloader.download_url(url, url_key)
 
     # file_paths = hyjdl.download_url(url, url_key)

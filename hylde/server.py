@@ -35,7 +35,7 @@ def get_cached_file(url_key: str) -> str | None:
     """
     Retrieve the cached file name for a URL key from the shelve database.
     """
-    lolg.debug(f"Getting cache entry for url '{url_key}'...")
+    lolg.debug(f"Looking for cache entry for url '{url_key}'...")
     with shelve.open(cache_file) as db:
         file_name = db.get(url_key)
 

@@ -614,6 +614,25 @@ files = [
 ]
 
 [[package]]
+name = "gallery-dl"
+version = "1.30.0"
+description = "Command-line program to download image galleries and collections from several image hosting sites"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "gallery_dl-1.30.0-py3-none-any.whl", hash = "sha256:817e540ed961ad39b13e833328476fe8c873f608ed17e995242e4c158f7e8003"},
+    {file = "gallery_dl-1.30.0.tar.gz", hash = "sha256:d34772c13847d85fee0cd388aea59238bb7332a1c7614e4df857c392035b0489"},
+]
+
+[package.dependencies]
+requests = ">=2.11.0"
+
+[package.extras]
+extra = ["pyyaml", "requests[socks]", "secretstorage ; sys_platform == \"linux\"", "toml ; python_version < \"3.11\"", "truststore ; python_version >= \"3.10\"", "yt-dlp[default]"]
+video = ["yt-dlp"]
+
+[[package]]
 name = "h11"
 version = "0.16.0"
 description = "A pure-Python, bring-your-own-I/O implementation of HTTP/1.1"
@@ -2640,4 +2659,4 @@ dev = ["black (>=19.3b0) ; python_version >= \"3.6\"", "pytest (>=4.6.2)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11, <3.14"
-content-hash = "d87ecd3e9137ca1597d6364c5c0d148ddd83f22533015965de41b283907be4df"
+content-hash = "76bc2ae250280157fe5ffd4df5f21373d84e0e60e2e4cbc054e80e7782bc95e6"
