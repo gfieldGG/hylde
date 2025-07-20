@@ -5,7 +5,7 @@ from pathlib import Path
 
 from hylde import lolg, settings
 
-import hylde.jdownloader as hyjdl
+import hylde.downloaders.jdownloader as hyjdl
 
 
 cache_directory = Path(settings.cachedir).resolve()
