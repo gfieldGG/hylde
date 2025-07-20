@@ -6,7 +6,7 @@ from flask import Flask, request, send_file
 
 from hylde import lolg, settings
 from hylde.util import md5
-import hylde.downloader as hydl
+import hylde.wrapper as hydl
 
 
 # initialize flask app
