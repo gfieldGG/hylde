@@ -54,11 +54,5 @@ def download_url(url: str, url_key: str) -> list[Path] | None:
 
     if not fc.files:
         lolg.error(f"gallerydl returned no filepaths for '{url_key}'.")
-    else:
-        for f in fc.files:
-            if f.parent.name != url_key:
-                lolg.warning(f"{url_key = } {f.parent.name = }")
-            else:
-                lolg.info(f"{url_key = } {f.parent.name = }")
 
     return fc.files
