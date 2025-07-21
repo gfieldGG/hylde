@@ -16,6 +16,7 @@ gdl.config.set(("extractor",), "base-directory", output_dir.as_posix())
 class FileCollector:
     url_key: str
     files: list[Path]
+    errors: list[Path]
 
     def __init__(self, url_key):
         self.url_key = url_key
@@ -25,6 +26,10 @@ class FileCollector:
     def filepath_hook(self, pathfmt: gallery_dl.path.PathFormat):
         lolg.debug(f"[{self.url_key}] gallerydl returned filepath: {pathfmt.path}")
         self.files.append(Path(pathfmt.path))
+
+    def error_hook(self, pathfmt: gallery_dl.path.PathFormat):
+        lolg.debug(f"[{self.url_key}] gallerydl returned error for: {pathfmt.path}")
+        self.errors.append(Path(pathfmt.path))
 
 
 class GoodJob(gdl.job.DownloadJob):
@@ -51,6 +56,10 @@ def download_url(url: str, url_key: str) -> list[Path] | None:
     job = GoodJob(url)
     job.register_hooks(hooks={"file": fc.filepath_hook})
     job.run()
+
+    if fc.errors:
+        lolg.error(f"gallerydl returned {len(fc.errors)} errors for '{url_key}'")
+        return None
 
     if not fc.files:
         lolg.error(f"gallerydl returned no filepaths for '{url_key}'.")
