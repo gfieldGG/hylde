@@ -38,7 +38,7 @@ class GoodJob(gdl.job.DownloadJob):
 
     def __init__(self, url, parent=None):
         gdl.job.Job.__init__(self, url, parent)
-        self.hooks = {"file": []}
+        self.hooks = {"file": [], "error": []}
         self.log = self.get_logger("download")
         self.fallback = None
         self.archive = None
@@ -55,7 +55,7 @@ def download_url(url: str, url_key: str) -> list[Path] | None:
     gdl.config.set(("extractor",), "directory", [f"{uuid.uuid4()}"])
     fc = FileCollector(url_key=url_key)
     job = GoodJob(url)
-    job.register_hooks(hooks={"file": fc.filepath_hook})
+    job.register_hooks(hooks={"file": fc.filepath_hook, "error": fc.error_hook})
     job.run()
 
     if fc.errors:
