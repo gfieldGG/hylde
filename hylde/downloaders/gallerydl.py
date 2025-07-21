@@ -21,6 +21,7 @@ class FileCollector:
     def __init__(self, url_key):
         self.url_key = url_key
         self.files = []
+        self.errors = []
         lolg.debug(f"Created FileCollector for '{url_key}'")
 
     def filepath_hook(self, pathfmt: gallery_dl.path.PathFormat):
