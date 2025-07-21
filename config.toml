@@ -5,6 +5,13 @@ cachedbfile = "/config/cache.db"
 logfile = "/config/hylde.log"
 loglevel = "INFO"
 
+[registry]
+downloader_patterns = [
+  ["://jpg\\d+\\.\\w{2,8}/i(?:mg|mage)?/.", "gallerydl"],
+  ["://bunkr+\\.\\w{2,8}/(?:f|d|i|v)/.", "gallerydl"],
+  [".*", "jdownloader"],
+]
+
 [downloader.jdownloader]
 email = "TO BE SET"
 password = "TO BE SET"

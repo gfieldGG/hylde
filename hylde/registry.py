@@ -1,12 +1,14 @@
 import re
 
 from hylde import lolg, settings
-from hylde.downloaders import jdownloader, gallerydl
+
+from hylde.downloaders import jdownloader, gallerydl  # noqa: F401
+
 
 DOWNLOADER_PATTERNS = [
-    (r"jpg\d+\.\w{2,8}/i(?:mg|mage)?/", gallerydl),
-    (r".*", jdownloader),
-]  # TODO expose setting
+    (pattern, globals()[module_name])
+    for pattern, module_name in settings.registry.downloader_patterns
+]
 
 
 def get_downloader_for_url(url: str):
