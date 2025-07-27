@@ -182,7 +182,8 @@ def handle_request():
 
     # download has previously failed
     elif cached_filename == "FAILED":
-        lolg.error(f"Previous download failed for URL '{url_key}'")
+        lolg.error(f"Previous download failed for '{url_key}'")
+        remove_cached_file(url_key=url_key)
         return "Failed to download the file.", 500
 
     # found cache entry
