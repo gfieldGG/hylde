@@ -18,7 +18,7 @@ COPY pyproject.toml poetry.lock config.toml README.md ./
 COPY hylde ./hylde
 
 # Install dependencies
-RUN poetry install --no-dev --no-interaction --no-ansi
+RUN poetry install --without dev --no-interaction --no-ansi
 
 # Expose the port the Flask app runs on
 EXPOSE 5000
