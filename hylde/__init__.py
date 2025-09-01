@@ -5,7 +5,11 @@ from dynaconf import Dynaconf  # type:ignore
 # get settings
 settings = Dynaconf(
     envvar_prefix="HYLDE",
-    settings_files=["config.toml", "config.dev.toml"],
+    settings_files=[
+        "config.toml",
+        "config.dev.toml",
+        "/config/config.toml",
+    ],
 )
 
 # configure Loguru

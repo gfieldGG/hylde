@@ -1,9 +1,9 @@
 # Use an official lightweight Python image
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
-    POETRY_VERSION=1.8.4
+    POETRY_VERSION=2.1.4
 
 # Set the working directory inside the container
 WORKDIR /hylde
