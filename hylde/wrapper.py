@@ -39,12 +39,13 @@ def _zip_files_to_cache(
 def _move_file_to_cache(
     target_directory: Path, file_path: Path, folder_name: str = ""
 ) -> str:
-    file_name = f"{folder_name}/{file_path.name}"
-    output_path = target_directory / file_name
+    dst_file_name = f"{folder_name}/{file_path.name}"
+    output_path = target_directory / dst_file_name
+    lolg.debug(f"Creating cache folder: {output_path.parent}")
     os.makedirs(output_path.parent, exist_ok=True)
     lolg.debug(f"Moving '{file_path}' -> '{output_path}'")
     shutil.move(file_path, output_path)
-    return file_name
+    return dst_file_name
 
 
 def download_file(url: str, url_key: str) -> str | None:
