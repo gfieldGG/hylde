@@ -15,6 +15,7 @@ def _zip_files_to_cache(
 ) -> str:
     file_name = f"{folder_name}/{folder_name}.zip"
     output_path = target_directory / file_name
+    lolg.debug(f"Creating cache folder: {output_path.parent}")
     os.makedirs(output_path.parent, exist_ok=True)
     lolg.debug(f"Zipping {len(file_paths)} files to '{output_path}'...")
 
