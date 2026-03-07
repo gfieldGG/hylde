@@ -646,16 +646,14 @@ files = [
 ]
 
 [[package]]
-name = "gallery-dl"
-version = "1.31.7"
+name = "gallery_dl"
+version = "1.32.0.dev0"
 description = "Command-line program to download image galleries and collections from several image hosting sites"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
-files = [
-    {file = "gallery_dl-1.31.7-py3-none-any.whl", hash = "sha256:546168a1ea8fac5bdf702dd32efc9cb1a9c084a47eef3bd0be74c5e60d0c5b38"},
-    {file = "gallery_dl-1.31.7.tar.gz", hash = "sha256:d599cbe22326fdb74c4b398f83bbd3a37855be79efaf54a05f450deab3ad1d90"},
-]
+files = []
+develop = false
 
 [package.dependencies]
 requests = ">=2.11.0"
@@ -663,6 +661,12 @@ requests = ">=2.11.0"
 [package.extras]
 extra = ["jinja2", "pyyaml", "requests[socks]", "secretstorage ; sys_platform == \"linux\"", "toml ; python_version < \"3.11\"", "truststore ; python_version >= \"3.10\"", "yt-dlp[default]"]
 video = ["yt-dlp"]
+
+[package.source]
+type = "git"
+url = "https://github.com/mikf/gallery-dl.git"
+reference = "master"
+resolved_reference = "e38194378cffaefcc386da1e4671f304f8949fa8"
 
 [[package]]
 name = "h11"
@@ -2846,4 +2850,4 @@ dev = ["black (>=19.3b0) ; python_version >= \"3.6\"", "pytest (>=4.6.2)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11, <3.16"
-content-hash = "df06937a39a9aae7898c77acb60752fcc13e287a0d322926f9c90f54e6cc2567"
+content-hash = "f9cbbd3dee4de07cc5a7a565f56986826d39b64125317a79ce0440aae912a5cc"
