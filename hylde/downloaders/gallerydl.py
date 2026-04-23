@@ -1,5 +1,6 @@
 import tempfile
 import uuid
+from http.client import IncompleteRead
 from pathlib import Path
 
 import gallery_dl as gdl  # type:ignore
@@ -56,7 +57,11 @@ def download_url(url: str, url_key: str) -> list[Path] | None:
     fc = FileCollector(url_key=url_key)
     job = GoodJob(url)
     job.register_hooks(hooks={"file": fc.filepath_hook, "error": fc.error_hook})
-    job.run()
+    try:
+        job.run()
+    except IncompleteRead as e:
+        lolg.warning(f"[{url_key}] IncompleteRead, retryable: {e}")
+        return []
 
     if fc.errors:
         lolg.error(f"gallerydl returned {len(fc.errors)} errors for '{url_key}'")
