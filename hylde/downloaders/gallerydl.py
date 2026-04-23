@@ -1,6 +1,5 @@
 import tempfile
 import uuid
-from http.client import IncompleteRead
 from pathlib import Path
 
 import gallery_dl as gdl  # type:ignore
@@ -12,6 +11,8 @@ from hylde import lolg, settings
 output_dir = Path(tempfile.gettempdir()) / "hylde" / "gallerydl"  # TODO expose setting
 
 gdl.config.set(("extractor",), "base-directory", output_dir.as_posix())
+gdl.config.set(("extractor",), "retries", 0)
+gdl.config.set(("downloader",), "retries", 0)
 
 
 class FileCollector:
@@ -57,11 +58,7 @@ def download_url(url: str, url_key: str) -> list[Path] | None:
     fc = FileCollector(url_key=url_key)
     job = GoodJob(url)
     job.register_hooks(hooks={"file": fc.filepath_hook, "error": fc.error_hook})
-    try:
-        job.run()
-    except IncompleteRead as e:
-        lolg.warning(f"[{url_key}] IncompleteRead, retryable: {e}")
-        return []
+    job.run()
 
     if fc.errors:
         lolg.error(f"gallerydl returned {len(fc.errors)} errors for '{url_key}'")
