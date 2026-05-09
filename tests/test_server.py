@@ -1,7 +1,5 @@
 """Tests for hylde.server module."""
 
-import threading
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -145,9 +143,7 @@ class TestCacheHelpers:
 
     @pytest.fixture(autouse=True)
     def patch_settings(self, tmp_path):
-        with patch(
-            "hylde.server._cache_file", return_value=tmp_path / "cache.db"
-        ):
+        with patch("hylde.server._cache_file", return_value=tmp_path / "cache.db"):
             yield
 
     def test_get_cached_file_returns_none_when_missing(self):

@@ -65,7 +65,7 @@ class TestZipFilesToCache:
         f1.write_text("1")
         f2.write_text("2")
 
-        result = wrapper._zip_files_to_cache(tmp_path, [f1, f2], "multi")
+        wrapper._zip_files_to_cache(tmp_path, [f1, f2], "multi")
 
         zip_path = tmp_path / "multi" / "multi.zip"
         assert zip_path.exists()

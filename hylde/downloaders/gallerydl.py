@@ -5,7 +5,7 @@ from pathlib import Path
 import gallery_dl as gdl  # type:ignore
 import gallery_dl.path  # type:ignore
 
-from hylde import lolg, settings
+from hylde import lolg
 
 
 output_dir = Path(tempfile.gettempdir()) / "hylde" / "gallerydl"  # TODO expose setting
