@@ -13,6 +13,9 @@ cache_directory = Path(settings.cachedir).resolve()
 def _zip_files_to_cache(
     target_directory: Path, file_paths: list[Path], folder_name: str = ""
 ) -> str:
+    if not file_paths:
+        raise ValueError("Cannot zip an empty list of files.")
+
     file_name = f"{folder_name}/{folder_name}.zip"
     output_path = target_directory / file_name
     lolg.debug(f"Creating cache folder: {output_path.parent}")
