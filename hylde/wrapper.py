@@ -7,7 +7,8 @@ from hylde import lolg, settings
 from hylde.registry import get_downloader_for_url
 
 
-cache_directory = Path(settings.cachedir).resolve()
+def _cache_dir() -> Path:
+    return Path(settings.cachedir).resolve()
 
 
 def _zip_files_to_cache(
@@ -71,8 +72,8 @@ def download_file(url: str, url_key: str) -> str | None:
     elif len(file_paths) == 0:
         return ""
     elif len(file_paths) == 1:
-        file_name = _move_file_to_cache(cache_directory, file_paths[0], url_key)
+        file_name = _move_file_to_cache(_cache_dir(), file_paths[0], url_key)
     else:
-        file_name = _zip_files_to_cache(cache_directory, file_paths, url_key)
+        file_name = _zip_files_to_cache(_cache_dir(), file_paths, url_key)
     lolg.info(f"Moved file to cache: {file_name}")
     return file_name

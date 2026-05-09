@@ -27,10 +27,9 @@ class TestHandleRequest:
         """Use a temp directory and tiny timeout for all server tests."""
         fake_settings = MagicMock()
         fake_settings.maxtimeout = 0.01
-        fake_settings.cachedbfile = str(tmp_path / "cache.db")
         with (
-            patch.object(server, "cache_dir", tmp_path),
-            patch.object(server, "cache_file", tmp_path / "cache.db"),
+            patch("hylde.server._cache_dir", return_value=tmp_path),
+            patch("hylde.server._cache_file", return_value=tmp_path / "cache.db"),
             patch("hylde.server.settings", fake_settings),
         ):
             yield
@@ -146,11 +145,8 @@ class TestCacheHelpers:
 
     @pytest.fixture(autouse=True)
     def patch_settings(self, tmp_path):
-        fake_settings = MagicMock()
-        fake_settings.cachedbfile = str(tmp_path / "cache.db")
-        with (
-            patch.object(server, "cache_file", tmp_path / "cache.db"),
-            patch("hylde.server.settings", fake_settings),
+        with patch(
+            "hylde.server._cache_file", return_value=tmp_path / "cache.db"
         ):
             yield
 
@@ -167,7 +163,7 @@ class TestCacheHelpers:
         assert server.get_cached_file("xyz") is None
 
     def test_remove_cached_file_deletes_actual_file(self, tmp_path):
-        with patch.object(server, "cache_dir", tmp_path):
+        with patch("hylde.server._cache_dir", return_value=tmp_path):
             f = tmp_path / "key" / "file.txt"
             f.parent.mkdir(parents=True)
             f.write_text("data")
@@ -176,13 +172,13 @@ class TestCacheHelpers:
             assert not f.exists()
 
     def test_remove_cached_file_skips_empty_string(self, tmp_path):
-        with patch.object(server, "cache_dir", tmp_path):
+        with patch("hylde.server._cache_dir", return_value=tmp_path):
             server.set_cached_file("empty", "")
             server.remove_cached_file("empty")
             assert server.get_cached_file("empty") is None
 
     def test_remove_cached_file_skips_in_progress_marker(self, tmp_path):
-        with patch.object(server, "cache_dir", tmp_path):
+        with patch("hylde.server._cache_dir", return_value=tmp_path):
             server.set_cached_file("prog", "...")
             server.remove_cached_file("prog")
             assert server.get_cached_file("prog") is None
@@ -192,7 +188,7 @@ class TestLookInCacheDirectory:
     """Tests for look_in_cache_directory."""
 
     def test_returns_first_file(self, tmp_path):
-        with patch.object(server, "cache_dir", tmp_path):
+        with patch("hylde.server._cache_dir", return_value=tmp_path):
             d = tmp_path / "key"
             d.mkdir()
             (d / "a.txt").write_text("a")
@@ -203,13 +199,13 @@ class TestLookInCacheDirectory:
             assert result in ("key/a.txt", "key/b.txt")
 
     def test_returns_none_when_directory_empty(self, tmp_path):
-        with patch.object(server, "cache_dir", tmp_path):
+        with patch("hylde.server._cache_dir", return_value=tmp_path):
             d = tmp_path / "key"
             d.mkdir()
             assert server.look_in_cache_directory("key") is None
 
     def test_returns_none_when_directory_missing(self, tmp_path):
-        with patch.object(server, "cache_dir", tmp_path):
+        with patch("hylde.server._cache_dir", return_value=tmp_path):
             assert server.look_in_cache_directory("key") is None
 
 
@@ -240,12 +236,9 @@ class TestDownloadFileHelper:
 
     @pytest.fixture(autouse=True)
     def patch_settings(self, tmp_path):
-        fake_settings = MagicMock()
-        fake_settings.cachedbfile = str(tmp_path / "cache.db")
         with (
-            patch.object(server, "cache_dir", tmp_path),
-            patch.object(server, "cache_file", tmp_path / "cache.db"),
-            patch("hylde.server.settings", fake_settings),
+            patch("hylde.server._cache_dir", return_value=tmp_path),
+            patch("hylde.server._cache_file", return_value=tmp_path / "cache.db"),
         ):
             yield
 

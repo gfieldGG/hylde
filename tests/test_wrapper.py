@@ -132,7 +132,7 @@ class TestDownloadFile:
         mock_downloader.__name__ = "MockDownloader"
 
         with (
-            patch.object(wrapper, "cache_directory", tmp_path),
+            patch("hylde.wrapper._cache_dir", return_value=tmp_path),
             patch("hylde.wrapper.get_downloader_for_url", return_value=mock_downloader),
         ):
             result = wrapper.download_file("http://example.com", "key")
@@ -145,7 +145,7 @@ class TestDownloadFile:
         mock_downloader.__name__ = "MockDownloader"
 
         with (
-            patch.object(wrapper, "cache_directory", tmp_path),
+            patch("hylde.wrapper._cache_dir", return_value=tmp_path),
             patch("hylde.wrapper.get_downloader_for_url", return_value=mock_downloader),
         ):
             result = wrapper.download_file("http://example.com", "key")
@@ -161,7 +161,7 @@ class TestDownloadFile:
         mock_downloader.__name__ = "MockDownloader"
 
         with (
-            patch.object(wrapper, "cache_directory", tmp_path),
+            patch("hylde.wrapper._cache_dir", return_value=tmp_path),
             patch("hylde.wrapper.get_downloader_for_url", return_value=mock_downloader),
         ):
             result = wrapper.download_file("http://example.com", "key")
@@ -181,7 +181,7 @@ class TestDownloadFile:
         mock_downloader.__name__ = "MockDownloader"
 
         with (
-            patch.object(wrapper, "cache_directory", tmp_path),
+            patch("hylde.wrapper._cache_dir", return_value=tmp_path),
             patch("hylde.wrapper.get_downloader_for_url", return_value=mock_downloader),
         ):
             result = wrapper.download_file("http://example.com", "key")
@@ -195,7 +195,7 @@ class TestDownloadFile:
         mock_downloader.__name__ = "MockDownloader"
 
         with (
-            patch.object(wrapper, "cache_directory", tmp_path),
+            patch("hylde.wrapper._cache_dir", return_value=tmp_path),
             patch("hylde.wrapper.get_downloader_for_url", return_value=mock_downloader),
         ):
             wrapper.download_file("http://example.com/page", "abc123")

@@ -12,23 +12,28 @@ import hylde.wrapper as hydl
 # initialize flask app
 app = Flask(__name__)
 
-# initialize cache directory
-cache_dir = Path(settings.cachedir).resolve()
-if cache_dir.exists():
-    lolg.debug(f"Found temporary cache directory at '{cache_dir}'")
-else:
-    lolg.info(f"Creating temporary cache directory at '{cache_dir}'...")
-    os.makedirs(cache_dir, exist_ok=True)
+def _cache_dir() -> Path:
+    return Path(settings.cachedir).resolve()
 
-# initialize db cache
-cache_file = Path(settings.cachedbfile)
+
+def _cache_file() -> Path:
+    return Path(settings.cachedbfile)
+
+
+# initialize cache directory
+_cache_dir_init = _cache_dir()
+if _cache_dir_init.exists():
+    lolg.debug(f"Found temporary cache directory at '{_cache_dir_init}'")
+else:
+    lolg.info(f"Creating temporary cache directory at '{_cache_dir_init}'...")
+    os.makedirs(_cache_dir_init, exist_ok=True)
 
 # active threads registry
 active_threads: dict[str, threading.Thread] = {}
 
 
 def _get_file(file_name: str) -> Path:
-    return (cache_dir / file_name).resolve()
+    return (_cache_dir() / file_name).resolve()
 
 
 def get_cached_file(url_key: str) -> str | None:
@@ -36,7 +41,7 @@ def get_cached_file(url_key: str) -> str | None:
     Retrieve the cached file name for a URL key from the shelve database.
     """
     lolg.debug(f"Looking for cache entry for url '{url_key}'...")
-    with shelve.open(cache_file) as db:
+    with shelve.open(_cache_file()) as db:
         file_name = db.get(url_key)
 
         if file_name is None:
@@ -56,14 +61,14 @@ def set_cached_file(url_key: str, file: str | None):
     Update or create a cache entry in the shelve database.
     """
     lolg.debug(f"Adding cache entry '{url_key}' -> '{file}'...")
-    with shelve.open(cache_file) as db:
+    with shelve.open(_cache_file()) as db:
         db[url_key] = file
 
 
 def remove_cached_file(url_key: str):
     """Delete a cache entry and its file in cache directory."""
     lolg.debug(f"Removing cache entry '{url_key}'...")
-    with shelve.open(cache_file) as db:
+    with shelve.open(_cache_file()) as db:
         if url_key in db:
             if db[url_key] != "" and db[url_key] != "...":
                 f = _get_file(db[url_key])
@@ -87,7 +92,7 @@ def get_url_key(url: str) -> str:
 
 def look_in_cache_directory(url_key: str) -> str | None:
     """Return first file in cachedir/url_key/ directory. Potentially unsafe."""
-    url_dir = cache_dir / url_key
+    url_dir = _cache_dir() / url_key
     if url_dir.exists():
         file = next(url_dir.iterdir(), None)
         if file:
