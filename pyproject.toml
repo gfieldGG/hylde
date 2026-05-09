@@ -22,6 +22,13 @@ types-toml = ">=0.10.8.20240310"
 types-requests = ">=2.32.0.20241016"
 pytest = "^9.0.3"
 
+[tool.pytest.ini_options]
+# pydantic (via pyjd) DeprecationWarnings
+filterwarnings = [
+    "ignore::DeprecationWarning:pydantic.*",
+    "ignore::DeprecationWarning:pyjd.*",
+]
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
