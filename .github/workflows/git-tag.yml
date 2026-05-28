@@ -1,0 +1,40 @@
+name: "git tag"
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - pyproject.toml
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.TAG_PUSH_TOKEN }}
+
+      - name: Check if version changed
+        id: version
+        run: |
+          OLD=$(git show "${{ github.event.before }}:pyproject.toml" | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/' | tr -d '[:space:]')
+          NEW=$(grep '^version = ' pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/' | tr -d '[:space:]')
+          echo "old=$OLD"
+          echo "new=$NEW"
+          if [ "$OLD" != "$NEW" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "version=$NEW" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push tag
+        if: steps.version.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${{ steps.version.outputs.version }}"
+          git push origin "${{ steps.version.outputs.version }}"
