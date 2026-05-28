@@ -127,8 +127,109 @@ class TestLinkgrabberOfflineDetection:
         assert add_links_query.assignJobID is True
         wait.assert_called_once_with(package_name="pkg", job_id=789)
 
-    def test_download_url_returns_none_for_finished_package_with_error_status(self):
+    def test_resolve_finished_packages_reports_missing_link_without_dropping_success(self, tmp_path):
+        package = SimpleNamespace(saveTo="/output/pkg")
+        good_path = tmp_path / "good.jpg"
+        good_path.write_text("ok")
+        good_link = SimpleNamespace(
+            name="good.jpg",
+            enabled=True,
+            skipped=None,
+            finished=True,
+            bytesLoaded=10,
+            bytesTotal=10,
+            status="Finished",
+            url="http://example.com/good",
+        )
+        missing_link = SimpleNamespace(
+            name="missing.jpg",
+            enabled=True,
+            skipped=None,
+            finished=True,
+            bytesLoaded=0,
+            bytesTotal=10,
+            status="File not found",
+            url="http://example.com/missing",
+        )
+
+        with (
+            patch(
+                "hylde.downloaders.jdownloader._get_download_links_from_package",
+                return_value=[good_link, missing_link],
+            ),
+            patch(
+                "hylde.downloaders.jdownloader._get_full_file_path",
+                side_effect=[good_path, None],
+            ),
+        ):
+            paths, failures = jdownloader._resolve_finished_packages({123: package})
+
+        assert paths == [good_path]
+        assert len(failures) == 1
+        assert "missing.jpg" in failures[0]
+        assert "missing file on disk" in failures[0]
+
+    def test_resolve_finished_packages_reports_package_error_even_if_link_resolves(self, tmp_path):
         package = SimpleNamespace(status="An Error occurred!  (bunkr.si)")
+        file_path = tmp_path / "file.jpg"
+        file_path.write_text("ok")
+        link = SimpleNamespace(
+            name="file.jpg",
+            enabled=True,
+            skipped=None,
+            finished=True,
+            bytesLoaded=10,
+            bytesTotal=10,
+            status="Finished",
+            url="http://example.com/file",
+        )
+
+        with (
+            patch(
+                "hylde.downloaders.jdownloader._get_download_links_from_package",
+                return_value=[link],
+            ),
+            patch("hylde.downloaders.jdownloader._get_full_file_path", return_value=file_path),
+        ):
+            paths, failures = jdownloader._resolve_finished_packages({123: package})
+
+        assert paths == [file_path]
+        assert len(failures) == 1
+        assert "An Error occurred!" in failures[0]
+
+    def test_resolve_finished_packages_returns_incomplete_existing_file_for_cleanup(self, tmp_path):
+        package = SimpleNamespace(status="Incomplete")
+        file_path = tmp_path / "partial.jpg"
+        file_path.write_text("partial")
+        link = SimpleNamespace(
+            name="partial.jpg",
+            enabled=True,
+            skipped=None,
+            finished=False,
+            bytesLoaded=5,
+            bytesTotal=10,
+            status="Downloading",
+            url="http://example.com/partial",
+        )
+
+        with (
+            patch(
+                "hylde.downloaders.jdownloader._get_download_links_from_package",
+                return_value=[link],
+            ),
+            patch("hylde.downloaders.jdownloader._get_full_file_path", return_value=file_path),
+        ):
+            paths, failures = jdownloader._resolve_finished_packages({123: package})
+
+        assert paths == [file_path]
+        assert len(failures) == 1
+        assert "not marked finished" in failures[0]
+        assert "incomplete bytes" in failures[0]
+
+    def test_download_url_deletes_partial_files_and_returns_none_when_finished_job_incomplete(self, tmp_path):
+        package = SimpleNamespace(status="An Error occurred!  (bunkr.si)")
+        partial_file = tmp_path / "good.jpg"
+        partial_file.write_text("partial success")
 
         with (
             patch("hylde.downloaders.jdownloader.connect"),
@@ -140,11 +241,14 @@ class TestLinkgrabberOfflineDetection:
                 "hylde.downloaders.jdownloader._wait_for_package_finish",
                 return_value={123: package},
             ),
-            patch("hylde.downloaders.jdownloader._get_filenames_from_package") as get_filenames,
+            patch(
+                "hylde.downloaders.jdownloader._resolve_finished_packages",
+                return_value=([partial_file], ["missing link"]),
+            ),
             patch("hylde.downloaders.jdownloader._remove_package_from_downloader") as remove,
         ):
             result = jdownloader.download_url("http://example.com/file", "pkg")
 
         assert result is None
-        get_filenames.assert_not_called()
+        assert not partial_file.exists()
         remove.assert_called_once_with(123)

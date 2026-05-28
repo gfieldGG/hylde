@@ -281,20 +281,30 @@ def _wait_for_package_finish(
     return None
 
 
-def _get_filenames_from_package(package_id: int):
-    """Return JDownloader link names, which correspond to downloaded filenames."""
+def _get_download_links_from_package(package_id: int):
+    """Return JDownloader download links for one Downloads-list package."""
     links = _call_pyjd(
         JDD.downloads.query_links,
         query_params=LinkQuery(
             packageUUIDs=[package_id],
+            bytesLoaded=True,
+            bytesTotal=True,
+            enabled=True,
+            finished=True,
+            host=True,
+            skipped=True,
             status=True,
             url=True,
-            finished=True,
-            enabled=True,
             maxResults=1000,
         ),
     )
     lolg.debug(f"Found {len(links)} links in package '{package_id}'")
+    return links
+
+
+def _get_filenames_from_package(package_id: int):
+    """Return JDownloader link names, which correspond to downloaded filenames."""
+    links = _get_download_links_from_package(package_id)
     filenames = [link.name for link in links]
     return filenames
 
@@ -327,6 +337,78 @@ def _get_full_file_path(file_name: str, package: FilePackage) -> Path | None:
         return None
     lolg.trace(f"File exists at '{full_path}'")
     return full_path
+
+
+def _link_failure_reasons(link, file_path: Path | None) -> list[str]:
+    """Return reasons a finished JDownloader link is not a usable downloaded file."""
+    reasons = []
+
+    if link.enabled is False:
+        reasons.append("disabled")
+
+    if getattr(link, "skipped", None):
+        reasons.append("skipped")
+
+    if link.finished is not True:
+        reasons.append("not marked finished")
+
+    bytes_loaded = getattr(link, "bytesLoaded", None)
+    bytes_total = getattr(link, "bytesTotal", None)
+    if (
+        bytes_loaded is not None
+        and bytes_total is not None
+        and bytes_total > 0
+        and bytes_loaded < bytes_total
+    ):
+        reasons.append(f"incomplete bytes ({bytes_loaded}/{bytes_total})")
+
+    if file_path is None:
+        reasons.append("missing file on disk")
+
+    return reasons
+
+
+def _delete_partial_files(file_paths: list[Path]):
+    """Delete downloaded files from a failed all-or-nothing JDownloader job."""
+    for file_path in set(file_paths):
+        if file_path.exists():
+            lolg.debug(f"Deleting partial downloaded file '{file_path}'...")
+            file_path.unlink()
+
+
+def _resolve_finished_packages(packages: dict[int, FilePackage]) -> tuple[list[Path], list[str]]:
+    """Return resolved file paths and failure reasons for finished JDownloader packages."""
+    full_file_paths: list[Path] = []
+    failures: list[str] = []
+
+    for package_id, package in packages.items():
+        package_status = getattr(package, "status", "") or ""
+        if any(error in package_status for error in ERROR_MESSAGES):
+            failures.append(f"package '{package_id}' failed: status={package_status!r}")
+
+        links = _get_download_links_from_package(package_id)
+        if not links:
+            failures.append(f"package '{package_id}' has no download links")
+            continue
+
+        for link in links:
+            file_path = _get_full_file_path(link.name, package=package)
+            reasons = _link_failure_reasons(link, file_path)
+
+            if file_path:
+                lolg.trace(f"Found full file path '{file_path}'")
+                full_file_paths.append(file_path)
+
+            if reasons:
+                failures.append(
+                    f"link '{link.name}' in package '{package_id}' failed: "
+                    f"{', '.join(reasons)}; status={link.status!r}; url={link.url!r}"
+                )
+
+    if not full_file_paths and not failures:
+        failures.append("finished JDownloader job produced no files")
+
+    return full_file_paths, failures
 
 
 def download_url(url: str, url_key: str) -> list[Path] | None:
@@ -368,35 +450,18 @@ def download_url(url: str, url_key: str) -> list[Path] | None:
         lolg.warning(f"Timeout while waiting for '{url_key}' to finish.")
         return []
 
-    full_file_paths: list[Path] = []
-    package_error = False
-    for package_id, package in packages.items():
-        if any(error in package.status for error in ERROR_MESSAGES):
-            lolg.error(f"Error in package '{package_id}': {package.status}")
-            package_error = True
-            continue
-
-        filenames = _get_filenames_from_package(package_id)
-        # resolve filenames to full paths
-        for fn in filenames:
-            f = _get_full_file_path(fn, package=package)
-            if f:
-                lolg.trace(f"Found full file path '{f}'")
-                full_file_paths.append(f)
-            else:
-                lolg.warning(f"File '{fn}' not found.")
-
-    if full_file_paths and not package_error:
-        lolg.success(
-            f"Found {len(full_file_paths)} downloaded files for url '{url_key}'"
-        )
+    full_file_paths, failures = _resolve_finished_packages(packages)
 
     # clean up packages
     lolg.info(f"Removing package '{package_name}' from downloader...")
     for package_id in packages:
         _remove_package_from_downloader(package_id)
 
-    if package_error:
+    if failures:
+        for failure in failures:
+            lolg.error(failure)
+        _delete_partial_files(full_file_paths)
         return None
 
+    lolg.success(f"Found {len(full_file_paths)} downloaded files for url '{url_key}'")
     return full_file_paths
