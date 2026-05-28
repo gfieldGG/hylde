@@ -7,7 +7,10 @@ from pyjd.jd_types import (  # type:ignore
     PackageQuery,
     FilePackage,
     LinkQuery,
-    DownloadLink,
+    CrawledPackageQuery,
+    CrawledLinkQuery,
+    LinkCrawlerJobsQuery,
+    AvailableLinkState,
     DeleteAction,
     Mode,
     SelectionType,
@@ -41,6 +44,7 @@ def _call_pyjd(func, retries=3, delay=1, *args, **kwargs):
 
 
 def connect() -> JDDevice | None:
+    """Connect to the configured MyJDownloader device and cache it globally."""
     conn = MyJDConnector()
 
     lolg.debug("Trying to connect to MyJDownloader API...")
@@ -71,6 +75,7 @@ def connect() -> JDDevice | None:
 
 
 def _get_downloader_packages(package_name: str) -> dict[int, FilePackage] | None:
+    """Return Downloads-list packages matching Hylde's fixed package name."""
     packages = _call_pyjd(
         JDD.downloads.query_packages,
         query_params=PackageQuery(
@@ -92,36 +97,145 @@ def _get_downloader_packages(package_name: str) -> dict[int, FilePackage] | None
     return packages
 
 
-def _get_downloader_link(link_name: str, package_id: int) -> DownloadLink | None:
+def _get_linkgrabber_packages(package_name: str):
+    """Return LinkGrabber/collector packages matching Hylde's package name."""
+    packages = _call_pyjd(
+        JDD.linkgrabber.query_packages,
+        crawled_package_query=CrawledPackageQuery(
+            availableOfflineCount=True,
+            availableOnlineCount=True,
+            availableTempUnknownCount=True,
+            availableUnknownCount=True,
+            childCount=True,
+            saveTo=True,
+            status=True,
+            maxResults=100,
+        ),
+    )
+    packages = {
+        package.uuid: package for package in packages if package.name == package_name
+    }
+
+    if packages:
+        lolg.trace(f"Found {len(packages)} LinkGrabber packages named '{package_name}'")
+
+    return packages
+
+
+def _get_linkgrabber_links(package_id: int):
+    """Return LinkGrabber child links for one collector package."""
     links = _call_pyjd(
-        JDD.downloads.query_links,
-        query_params=LinkQuery(
+        JDD.linkgrabber.query_links,
+        crawled_link_query=CrawledLinkQuery(
             packageUUIDs=[package_id],
+            availability=True,
             status=True,
             url=True,
-            finished=True,
             enabled=True,
             maxResults=1000,
         ),
     )
-    link = next((link for link in links if link.name == link_name), None)
-    if link:
-        lolg.trace(f"Found link '{link_name}' in '{package_id}': {link}")
-    return link
+    lolg.debug(f"Found {len(links)} LinkGrabber links in package '{package_id}'")
+    return links
 
 
-def _wait_for_package_start(
-    package_name: str, interval=5, max_retries=24
+def _linkgrabber_job_finished(job_id: int) -> bool:
+    """Return whether JDownloader has finished crawling/checking added links."""
+    jobs = _call_pyjd(
+        JDD.linkgrabber.query_link_crawler_jobs,
+        link_crawler_jobs_query=LinkCrawlerJobsQuery(
+            collectorInfo=True,
+            jobIds=[job_id],
+        ),
+    )
+    if not jobs:
+        lolg.trace(f"LinkGrabber crawler job '{job_id}' not found; assuming finished.")
+        return True
+
+    for job in jobs:
+        if job.crawling or job.checking:
+            lolg.trace(f"LinkGrabber crawler job '{job_id}' is still active: {job}")
+            return False
+
+    if _call_pyjd(JDD.linkgrabber.is_collecting):
+        lolg.trace("LinkGrabber is still collecting links.")
+        return False
+
+    lolg.trace(f"LinkGrabber crawler job '{job_id}' has finished.")
+    return True
+
+
+def _is_offline_availability(availability) -> bool:
+    """Return True when a pyjd availability value means the link is offline."""
+    if availability == AvailableLinkState.OFFLINE:
+        return True
+    availability_value = getattr(availability, "value", availability)
+    return str(availability_value).upper().endswith("OFFLINE")
+
+
+def _linkgrabber_package_has_offline_links(package_id: int) -> bool:
+    """Return True if any child link in a collector package is offline."""
+    links = _get_linkgrabber_links(package_id)
+    for link in links:
+        if _is_offline_availability(link.availability):
+            lolg.error(
+                f"Offline LinkGrabber link in package '{package_id}': "
+                f"{link.name} ({link.url})"
+            )
+            return True
+    return False
+
+
+def _remove_package_from_linkgrabber(package_id: int):
+    """Remove a failed collector package so it does not linger in LinkGrabber."""
+    lolg.debug(f"Removing package id '{package_id}' from LinkGrabber...")
+    _call_pyjd(
+        JDD.linkgrabber.cleanup,
+        delete_action=DeleteAction.DELETE_ALL,
+        mode=Mode.REMOVE_LINKS_ONLY,
+        selection_type=SelectionType.SELECTED,
+        package_ids=[package_id],
+    )
+
+
+def _wait_for_package_start_or_linkgrabber_failure(
+    package_name: str, job_id: int, interval=2, max_retries=60
 ) -> dict[int, FilePackage] | None:
-    lolg.debug(f"Waiting for package '{package_name}' to start downloading...")
+    """Wait until LinkGrabber settles, then return Downloads packages or fail offline ones."""
+    lolg.debug(
+        f"Waiting for package '{package_name}' to start downloading or fail in LinkGrabber..."
+    )
     tries = 0
     while tries < max_retries:
         packages = _get_downloader_packages(package_name)
-        if packages:
-            lolg.debug(f"Found package '{package_name}' in download list.")
-            return packages
-        else:
-            lolg.trace(f"Package '{package_name}' not in download list (yet).")
+        linkgrabber_finished = _linkgrabber_job_finished(job_id)
+
+        if linkgrabber_finished:
+            linkgrabber_packages = _get_linkgrabber_packages(package_name)
+
+            if linkgrabber_packages:
+                for package_id, package in linkgrabber_packages.items():
+                    offline_count = getattr(package, "offlineCount", None)
+                    if offline_count is None:
+                        offline_count = getattr(package, "availableOfflineCount", 0)
+
+                    if offline_count or _linkgrabber_package_has_offline_links(package_id):
+                        lolg.error(
+                            f"Package '{package_name}' failed in LinkGrabber: "
+                            f"{offline_count} offline link(s)."
+                        )
+                        for failed_package_id in linkgrabber_packages:
+                            _remove_package_from_linkgrabber(failed_package_id)
+                        return None
+
+            if packages:
+                lolg.debug(f"Found package '{package_name}' in download list.")
+                return packages
+
+        elif packages:
+            lolg.trace(
+                f"Package '{package_name}' is in the download list, but LinkGrabber is still checking it."
+            )
 
         lolg.trace(
             f"Looking for '{package_name}' again in {interval}s... ({max_retries - tries} tries left)"
@@ -135,6 +249,7 @@ def _wait_for_package_start(
 def _wait_for_package_finish(
     package_name: str, poll_interval=5, max_retries=120
 ) -> dict[int, FilePackage] | None:
+    """Poll the Downloads list until all matching packages are finished."""
     lolg.debug(f"Waiting for package '{package_name}' to finish downloading...")
     tries = 0
     while tries < max_retries:
@@ -167,6 +282,7 @@ def _wait_for_package_finish(
 
 
 def _get_filenames_from_package(package_id: int):
+    """Return JDownloader link names, which correspond to downloaded filenames."""
     links = _call_pyjd(
         JDD.downloads.query_links,
         query_params=LinkQuery(
@@ -184,6 +300,7 @@ def _get_filenames_from_package(package_id: int):
 
 
 def _remove_package_from_downloader(package_id: int):
+    """Remove a completed package from JDownloader's Downloads list."""
     lolg.debug(f"Removing package id '{package_id}' from downloader...")
     _call_pyjd(
         JDD.downloads.cleanup,
@@ -195,6 +312,7 @@ def _remove_package_from_downloader(package_id: int):
 
 
 def _get_full_file_path(file_name: str, package: FilePackage) -> Path | None:
+    """Map JDownloader's internal save path to Hylde's mounted filesystem path."""
     package_subpath = Path(package.saveTo).relative_to(
         settings.downloader.jdownloader.outputdir
     )
@@ -212,7 +330,7 @@ def _get_full_file_path(file_name: str, package: FilePackage) -> Path | None:
 
 
 def download_url(url: str, url_key: str) -> list[Path] | None:
-    """Download file for url. Return full file paths. Return empty list on retryable problems. Return None if download failed."""
+    """Download URL via JDownloader and return paths, [] for retryable, None for failed."""
     connect()
 
     package_name = url_key
@@ -220,9 +338,10 @@ def download_url(url: str, url_key: str) -> list[Path] | None:
     # don't add package again if already/still in download list
     if not _get_downloader_packages(package_name):
         # add link to linkgrabber
-        _call_pyjd(
+        job = _call_pyjd(
             JDD.linkgrabber.add_links,
             add_links_query=AddLinksQuery(
+                assignJobID=True,
                 autostart=True,
                 autoExtract=False,
                 links=url,
@@ -232,7 +351,10 @@ def download_url(url: str, url_key: str) -> list[Path] | None:
         )
         lolg.debug(f"Added link '{url}' to package '{package_name}'")
 
-        packages = _wait_for_package_start(package_name=package_name)
+        packages = _wait_for_package_start_or_linkgrabber_failure(
+            package_name=package_name,
+            job_id=job.id,
+        )
         if not packages:
             lolg.debug(packages)
             lolg.error(f"Could not add '{url_key}' to downloader.")
