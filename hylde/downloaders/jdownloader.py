@@ -369,10 +369,12 @@ def download_url(url: str, url_key: str) -> list[Path] | None:
         return []
 
     full_file_paths: list[Path] = []
+    package_error = False
     for package_id, package in packages.items():
         if any(error in package.status for error in ERROR_MESSAGES):
             lolg.error(f"Error in package '{package_id}': {package.status}")
-            break
+            package_error = True
+            continue
 
         filenames = _get_filenames_from_package(package_id)
         # resolve filenames to full paths
@@ -384,7 +386,7 @@ def download_url(url: str, url_key: str) -> list[Path] | None:
             else:
                 lolg.warning(f"File '{fn}' not found.")
 
-    if full_file_paths:
+    if full_file_paths and not package_error:
         lolg.success(
             f"Found {len(full_file_paths)} downloaded files for url '{url_key}'"
         )
@@ -393,5 +395,8 @@ def download_url(url: str, url_key: str) -> list[Path] | None:
     lolg.info(f"Removing package '{package_name}' from downloader...")
     for package_id in packages:
         _remove_package_from_downloader(package_id)
+
+    if package_error:
+        return None
 
     return full_file_paths

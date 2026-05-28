@@ -126,3 +126,25 @@ class TestLinkgrabberOfflineDetection:
         add_links_query = call_pyjd.call_args.kwargs["add_links_query"]
         assert add_links_query.assignJobID is True
         wait.assert_called_once_with(package_name="pkg", job_id=789)
+
+    def test_download_url_returns_none_for_finished_package_with_error_status(self):
+        package = SimpleNamespace(status="An Error occurred!  (bunkr.si)")
+
+        with (
+            patch("hylde.downloaders.jdownloader.connect"),
+            patch(
+                "hylde.downloaders.jdownloader._get_downloader_packages",
+                return_value={123: package},
+            ),
+            patch(
+                "hylde.downloaders.jdownloader._wait_for_package_finish",
+                return_value={123: package},
+            ),
+            patch("hylde.downloaders.jdownloader._get_filenames_from_package") as get_filenames,
+            patch("hylde.downloaders.jdownloader._remove_package_from_downloader") as remove,
+        ):
+            result = jdownloader.download_url("http://example.com/file", "pkg")
+
+        assert result is None
+        get_filenames.assert_not_called()
+        remove.assert_called_once_with(123)
