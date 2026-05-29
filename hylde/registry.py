@@ -38,7 +38,17 @@ def load_downloader(name: str):
         else:
             module = importlib.import_module(module_ref)
     else:
-        module = importlib.import_module(f"hylde.downloaders.{name}")
+        builtin_ref = f"hylde.downloaders.{name}"
+        try:
+            module = importlib.import_module(builtin_ref)
+        except ModuleNotFoundError as exc:
+            if exc.name == builtin_ref:
+                raise ValueError(
+                    f"Downloader '{name}' is not built in and no plugin is configured. "
+                    f'Add [registry.downloader_modules] {name} = "/path/to/{name}.py" '
+                    "or change registry.downloader_patterns."
+                ) from exc
+            raise
 
     if not callable(getattr(module, "download_url", None)):
         raise ValueError(f"Downloader '{name}' does not define download_url().")
@@ -46,10 +56,26 @@ def load_downloader(name: str):
     return module
 
 
-DOWNLOADER_PATTERNS = [
-    (pattern, load_downloader(module_name))
-    for pattern, module_name in settings.registry.downloader_patterns
-]
+def _build_downloader_patterns():
+    patterns = []
+    loaded = []
+    for pattern, module_name in settings.registry.downloader_patterns:
+        try:
+            module = load_downloader(module_name)
+            patterns.append((pattern, module))
+            loaded.append(f"{module_name}={module.__name__}")
+        except Exception as exc:
+            lolg.critical(
+                f"Failed to load downloader '{module_name}' for pattern "
+                f"'{pattern}': {exc}"
+            )
+            raise
+
+    lolg.info(f"Loaded downloaders: {', '.join(loaded)}")
+    return patterns
+
+
+DOWNLOADER_PATTERNS = _build_downloader_patterns()
 
 
 def get_downloader_for_url(url: str):

@@ -16,12 +16,11 @@ class TestLoadDownloader:
 
     def test_loads_external_downloader_from_file(self, tmp_path):
         plugin = tmp_path / "plugin.py"
-        plugin.write_text(
-            "def download_url(url, url_key):\n"
-            "    return []\n"
-        )
+        plugin.write_text("def download_url(url, url_key):\n    return []\n")
 
-        with patch.object(registry, "_plugin_modules", return_value={"plugin": str(plugin)}):
+        with patch.object(
+            registry, "_plugin_modules", return_value={"plugin": str(plugin)}
+        ):
             result = registry.load_downloader("plugin")
 
         assert result.download_url("https://example.com", "key") == []
@@ -30,8 +29,13 @@ class TestLoadDownloader:
         module = ModuleType("custom_downloader")
         module.download_url = lambda url, url_key: []
 
-        with patch.dict("sys.modules", {"custom_downloader": module}), patch.object(
-            registry, "_plugin_modules", return_value={"custom": "custom_downloader"}
+        with (
+            patch.dict("sys.modules", {"custom_downloader": module}),
+            patch.object(
+                registry,
+                "_plugin_modules",
+                return_value={"custom": "custom_downloader"},
+            ),
         ):
             result = registry.load_downloader("custom")
 
@@ -41,14 +45,47 @@ class TestLoadDownloader:
         plugin = tmp_path / "plugin.py"
         plugin.write_text("VALUE = 1\n")
 
-        with patch.object(registry, "_plugin_modules", return_value={"plugin": str(plugin)}):
+        with patch.object(
+            registry, "_plugin_modules", return_value={"plugin": str(plugin)}
+        ):
             with pytest.raises(ValueError, match="download_url"):
                 registry.load_downloader("plugin")
 
-    def test_missing_downloader_raises_module_not_found_error(self):
+    def test_missing_downloader_raises_clear_error(self):
         with patch.object(registry, "_plugin_modules", return_value={}):
-            with pytest.raises(ModuleNotFoundError):
+            with pytest.raises(ValueError, match="no plugin is configured"):
                 registry.load_downloader("missing")
+
+    def test_logs_configured_downloader_load_failure(self):
+        with (
+            patch.object(
+                registry.settings.registry,
+                "downloader_patterns",
+                [(r"example\\.com", "missing")],
+            ),
+            patch.object(registry, "_plugin_modules", return_value={}),
+            patch.object(registry.lolg, "critical") as critical,
+        ):
+            with pytest.raises(ValueError, match="no plugin is configured"):
+                registry._build_downloader_patterns()
+
+        critical.assert_called_once()
+        assert "Failed to load downloader 'missing'" in critical.call_args.args[0]
+
+    def test_logs_loaded_downloaders(self):
+        with (
+            patch.object(
+                registry.settings.registry,
+                "downloader_patterns",
+                [(r"example\\.com", "gallerydl")],
+            ),
+            patch.object(registry.lolg, "info") as info,
+        ):
+            registry._build_downloader_patterns()
+
+        info.assert_called_once_with(
+            "Loaded downloaders: gallerydl=hylde.downloaders.gallerydl"
+        )
 
 
 class TestGetDownloaderForUrl:
