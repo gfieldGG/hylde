@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from hylde import wrapper
+from hylde.result import DownloadError
 
 
 class TestZipFilesToCache:
@@ -126,9 +127,10 @@ class TestMoveFileToCache:
 class TestDownloadFile:
     """Tests for download_file."""
 
-    def test_returns_none_on_downloader_error(self, tmp_path: Path):
+    def test_returns_download_error_from_downloader(self, tmp_path: Path):
         mock_downloader = MagicMock()
-        mock_downloader.download_url.return_value = None
+        error = DownloadError("File is offline.", retryable=False)
+        mock_downloader.download_url.return_value = error
         mock_downloader.__name__ = "MockDownloader"
 
         with (
@@ -137,11 +139,11 @@ class TestDownloadFile:
         ):
             result = wrapper.download_file("http://example.com", "key")
 
-        assert result is None
+        assert result == error
 
-    def test_returns_empty_string_on_retryable(self, tmp_path: Path):
+    def test_returns_retryable_download_error_on_exception(self, tmp_path: Path):
         mock_downloader = MagicMock()
-        mock_downloader.download_url.return_value = []
+        mock_downloader.download_url.side_effect = RuntimeError("connection failed")
         mock_downloader.__name__ = "MockDownloader"
 
         with (
@@ -150,7 +152,9 @@ class TestDownloadFile:
         ):
             result = wrapper.download_file("http://example.com", "key")
 
-        assert result == ""
+        assert isinstance(result, DownloadError)
+        assert result.message == "connection failed"
+        assert result.retryable is True
 
     def test_moves_single_file(self, tmp_path: Path):
         src = tmp_path / "dl" / "file.txt"
@@ -191,7 +195,7 @@ class TestDownloadFile:
 
     def test_downloader_called_with_url_and_key(self, tmp_path: Path):
         mock_downloader = MagicMock()
-        mock_downloader.download_url.return_value = []
+        mock_downloader.download_url.return_value = DownloadError("retry later", retryable=True)
         mock_downloader.__name__ = "MockDownloader"
 
         with (

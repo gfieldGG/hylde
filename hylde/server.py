@@ -6,6 +6,7 @@ from flask import Flask, request, send_file
 
 from hylde import lolg, settings
 from hylde.util import md5
+from hylde.result import CacheEntry, DownloadError, is_error_cache
 import hylde.wrapper as hydl
 
 
@@ -36,7 +37,7 @@ def _get_file(file_name: str) -> Path:
     return (_cache_dir() / file_name).resolve()
 
 
-def get_cached_file(url_key: str) -> str | None:
+def get_cached_file(url_key: str) -> CacheEntry | None:
     """
     Retrieve the cached file name for a URL key from the shelve database.
     """
@@ -49,6 +50,11 @@ def get_cached_file(url_key: str) -> str | None:
         elif file_name == "...":
             raise DeprecationWarning("In-progress markers are obsolete.")
             lolg.debug(f"Found in-progress marker for url '{url_key}'")
+        elif is_error_cache(file_name):
+            lolg.info(
+                f"Found failed cache entry for url '{url_key}': "
+                f"{file_name.get('message', 'Download failed.')}"
+            )
         elif file_name:
             lolg.debug(f"Found cache entry '{url_key}' -> '{file_name}'")
         else:
@@ -56,7 +62,7 @@ def get_cached_file(url_key: str) -> str | None:
         return file_name
 
 
-def set_cached_file(url_key: str, file: str | None):
+def set_cached_file(url_key: str, file: CacheEntry):
     """
     Update or create a cache entry in the shelve database.
     """
@@ -70,8 +76,9 @@ def remove_cached_file(url_key: str):
     lolg.debug(f"Removing cache entry '{url_key}'...")
     with shelve.open(_cache_file()) as db:
         if url_key in db:
-            if db[url_key] != "" and db[url_key] != "...":
-                f = _get_file(db[url_key])
+            entry = db[url_key]
+            if isinstance(entry, str) and entry not in ("", "...", "FAILED"):
+                f = _get_file(entry)
                 if f.exists():
                     f.unlink()
                     lolg.debug(f"Deleted file '{f}' for '{url_key}'")
@@ -108,15 +115,15 @@ def download_file(url, url_key):
         lolg.success(f"Recovered file '{file_name}' for url_key '{url_key}'")
     else:
         try:
-            file_name = hydl.download_file(url=url, url_key=url_key)
-            if file_name is None:
-                lolg.info(f"Download failed for '{url_key}'")
-                set_cached_file(url_key, "FAILED")
+            result = hydl.download_file(url=url, url_key=url_key)
+            if isinstance(result, DownloadError):
+                lolg.info(f"Download failed for '{url_key}': {result.message}")
+                set_cached_file(url_key, result.to_cache())
             else:
-                set_cached_file(url_key, file_name)
+                set_cached_file(url_key, result)
         except Exception as e:  # noqa: E722
             lolg.error(f"Unhandled error while downloading '{url_key}': {e}'")
-            set_cached_file(url_key, "")
+            set_cached_file(url_key, DownloadError(str(e), retryable=True).to_cache())
 
     lolg.debug(f"Removing active thread '{url_key}'")
     del active_threads[url_key]
@@ -179,13 +186,22 @@ def handle_request():
             )
             cached_filename = get_cached_file(url_key=url_key)
 
-    # download has previously failed but can be retried
+    # download has previously failed with a user-facing message
+    if is_error_cache(cached_filename):
+        message = str(cached_filename.get("message", "Download failed."))
+        retryable = bool(cached_filename.get("retryable", False))
+        status_code = 503 if retryable else 500
+        lolg.warning(f"Previous download failed for '{url_key}': {message}")
+        remove_cached_file(url_key=url_key)
+        return message, status_code
+
+    # legacy retryable failure marker
     if cached_filename == "":
         lolg.warning(f"Download '{url_key}' was previously marked as retryable.")
         remove_cached_file(url_key=url_key)
         return "Download previously failed. You may try again.", 503
 
-    # download has previously failed
+    # legacy permanent failure marker
     elif cached_filename == "FAILED":
         lolg.error(f"Previous download failed for '{url_key}'")
         remove_cached_file(url_key=url_key)
