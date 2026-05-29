@@ -17,6 +17,7 @@ from pyjd.jd_types import (  # type:ignore
 )
 
 from hylde import lolg, settings
+from hylde.result import DownloadError, DownloaderResult
 
 JDD: JDDevice
 
@@ -210,8 +211,8 @@ def _move_linkgrabber_packages_to_downloader(package_ids: list[int]):
 
 def _wait_for_package_start_or_linkgrabber_failure(
     package_name: str, job_id: int, interval=2, max_retries=60
-) -> dict[int, FilePackage] | None:
-    """Wait until LinkGrabber settles, then return Downloads packages or fail offline ones."""
+) -> dict[int, FilePackage] | DownloadError:
+    """Wait until LinkGrabber settles, then return Downloads packages or a failure."""
     lolg.debug(
         f"Waiting for package '{package_name}' to start downloading or fail in LinkGrabber..."
     )
@@ -237,7 +238,7 @@ def _wait_for_package_start_or_linkgrabber_failure(
                         )
                         for failed_package_id in linkgrabber_packages:
                             _remove_package_from_linkgrabber(failed_package_id)
-                        return None
+                        return DownloadError("File offline.", retryable=False)
 
                 package_ids_to_move = [
                     package_id
@@ -263,12 +264,12 @@ def _wait_for_package_start_or_linkgrabber_failure(
         tries += 1
         time.sleep(interval)
 
-    return None
+    return DownloadError("JDownloader collector timeout.", retryable=True)
 
 
 def _wait_for_package_finish(
     package_name: str, poll_interval=5, max_retries=120
-) -> dict[int, FilePackage] | None:
+) -> dict[int, FilePackage] | DownloadError:
     """Poll the Downloads list until all matching packages are finished."""
     lolg.debug(f"Waiting for package '{package_name}' to finish downloading...")
     tries = 0
@@ -277,7 +278,7 @@ def _wait_for_package_finish(
 
         if not packages:
             lolg.error(f"Package '{package_name}' not in download list anymore.")
-            return None
+            return DownloadError("JDownloader download gone.", retryable=True)
 
         all_finished = True
         for package_id, package in packages.items():
@@ -298,7 +299,7 @@ def _wait_for_package_finish(
         tries += 1
         time.sleep(poll_interval)
 
-    return None
+    return DownloadError("JDownloader timeout.", retryable=True)
 
 
 def _get_download_links_from_package(package_id: int):
@@ -431,9 +432,12 @@ def _resolve_finished_packages(packages: dict[int, FilePackage]) -> tuple[list[P
     return full_file_paths, failures
 
 
-def download_url(url: str, url_key: str) -> list[Path] | None:
-    """Download URL via JDownloader and return paths, [] for retryable, None for failed."""
-    connect()
+def download_url(url: str, url_key: str) -> DownloaderResult:
+    """Download URL via JDownloader and return paths or a user-facing error."""
+    try:
+        connect()
+    except Exception as e:
+        return DownloadError("JDownloader connection failed.", retryable=True)
 
     package_name = url_key
 
@@ -457,18 +461,16 @@ def download_url(url: str, url_key: str) -> list[Path] | None:
             package_name=package_name,
             job_id=job.id,
         )
-        if not packages:
-            lolg.debug(packages)
-            lolg.error(f"Could not add '{url_key}' to downloader.")
-            return None
+        if isinstance(packages, DownloadError):
+            lolg.error(f"Could not add '{url_key}' to downloader: {packages.message}")
+            return packages
     else:
         lolg.debug(f"Package '{package_name}' already in download list.")
 
     packages = _wait_for_package_finish(package_name)
-    if not packages:
-        lolg.debug(packages)
-        lolg.warning(f"Timeout while waiting for '{url_key}' to finish.")
-        return []
+    if isinstance(packages, DownloadError):
+        lolg.warning(f"JDownloader failed while waiting for '{url_key}': {packages.message}")
+        return packages
 
     full_file_paths, failures = _resolve_finished_packages(packages)
 
@@ -481,7 +483,7 @@ def download_url(url: str, url_key: str) -> list[Path] | None:
         for failure in failures:
             lolg.error(failure)
         _delete_partial_files(full_file_paths)
-        return None
+        return DownloadError("JDownloader failed.", retryable=False)
 
     lolg.success(f"Found {len(full_file_paths)} downloaded files for url '{url_key}'")
     return full_file_paths

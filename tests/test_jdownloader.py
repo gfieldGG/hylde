@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 from pyjd.jd_types import AvailableLinkState
 
 from hylde.downloaders import jdownloader
+from hylde.result import DownloadError
 
 
 class TestLinkgrabberOfflineDetection:
@@ -30,7 +31,9 @@ class TestLinkgrabberOfflineDetection:
                 "pkg", job_id=456, interval=0, max_retries=1
             )
 
-        assert result is None
+        assert isinstance(result, DownloadError)
+        assert result.message == "File offline."
+        assert result.retryable is False
         has_offline_links.assert_not_called()
         remove.assert_called_once_with(123)
 
@@ -54,7 +57,9 @@ class TestLinkgrabberOfflineDetection:
                 "pkg", job_id=456, interval=0, max_retries=1
             )
 
-        assert result is None
+        assert isinstance(result, DownloadError)
+        assert result.message == "File offline."
+        assert result.retryable is False
         remove.assert_called_once_with(123)
 
     def test_wait_does_not_return_downloader_package_before_linkgrabber_finished(self):
@@ -76,7 +81,8 @@ class TestLinkgrabberOfflineDetection:
                 "pkg", job_id=456, interval=0, max_retries=1
             )
 
-        assert result is None
+        assert isinstance(result, DownloadError)
+        assert result.retryable is True
         get_linkgrabber_packages.assert_not_called()
 
     def test_wait_returns_downloader_package_after_linkgrabber_finished(self):
@@ -124,7 +130,8 @@ class TestLinkgrabberOfflineDetection:
                 "pkg", job_id=789, interval=0, max_retries=1
             )
 
-        assert result is None
+        assert isinstance(result, DownloadError)
+        assert result.retryable is True
         move.assert_called_once_with([123, 456])
 
     def test_download_url_requests_and_uses_linkgrabber_job_id(self):
@@ -146,7 +153,7 @@ class TestLinkgrabberOfflineDetection:
         ):
             result = jdownloader.download_url("http://example.com/offline", "pkg")
 
-        assert result is None
+        assert isinstance(result, DownloadError)
         add_links_query = call_pyjd.call_args.kwargs["add_links_query"]
         assert add_links_query.assignJobID is True
         assert add_links_query.autostart is False
@@ -274,6 +281,7 @@ class TestLinkgrabberOfflineDetection:
         ):
             result = jdownloader.download_url("http://example.com/file", "pkg")
 
-        assert result is None
+        assert isinstance(result, DownloadError)
+        assert result.retryable is False
         assert not partial_file.exists()
         remove.assert_called_once_with(123)

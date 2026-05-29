@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from hylde import server
+from hylde.result import DownloadError
 
 
 class TestShimRoute:
@@ -109,6 +110,36 @@ class TestHandleRequest:
 
         assert resp.status_code == 500
         assert b"Failed" in resp.data
+        assert server.get_cached_file(url_key) is None
+
+    def test_error_cache_returns_message_and_status(self, tmp_path):
+        url = "http://example.com/img.jpg"
+        url_key = server.get_url_key(url)
+        server.set_cached_file(
+            url_key,
+            {"error": True, "message": "JDownloader connection failed.", "retryable": True},
+        )
+
+        with server.app.test_client() as client:
+            resp = client.get(f"/file?url={url}")
+
+        assert resp.status_code == 503
+        assert resp.data == b"JDownloader connection failed."
+        assert server.get_cached_file(url_key) is None
+
+    def test_permanent_error_cache_returns_500(self, tmp_path):
+        url = "http://example.com/img.jpg"
+        url_key = server.get_url_key(url)
+        server.set_cached_file(
+            url_key,
+            {"error": True, "message": "File offline.", "retryable": False},
+        )
+
+        with server.app.test_client() as client:
+            resp = client.get(f"/file?url={url}")
+
+        assert resp.status_code == 500
+        assert resp.data == b"File offline."
         assert server.get_cached_file(url_key) is None
 
     def test_missing_cached_file_returns_503(self, tmp_path):
@@ -238,15 +269,22 @@ class TestDownloadFileHelper:
         ):
             yield
 
-    def test_sets_failed_on_none(self):
+    def test_sets_download_error_cache(self):
         url = "http://example.com"
         url_key = server.get_url_key(url)
         server.active_threads[url_key] = MagicMock()
 
-        with patch("hylde.server.hydl.download_file", return_value=None):
+        with patch(
+            "hylde.server.hydl.download_file",
+            return_value=DownloadError("File is offline.", retryable=False),
+        ):
             server.download_file(url, url_key)
 
-        assert server.get_cached_file(url_key) == "FAILED"
+        assert server.get_cached_file(url_key) == {
+            "error": True,
+            "message": "File is offline.",
+            "retryable": False,
+        }
         assert url_key not in server.active_threads
 
     def test_sets_empty_on_exception(self):
@@ -257,7 +295,11 @@ class TestDownloadFileHelper:
         with patch("hylde.server.hydl.download_file", side_effect=RuntimeError("boom")):
             server.download_file(url, url_key)
 
-        assert server.get_cached_file(url_key) == ""
+        assert server.get_cached_file(url_key) == {
+            "error": True,
+            "message": "boom",
+            "retryable": True,
+        }
         assert url_key not in server.active_threads
 
     def test_sets_filename_on_success(self, tmp_path):

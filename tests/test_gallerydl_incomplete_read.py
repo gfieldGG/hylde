@@ -10,6 +10,7 @@ from hylde.downloaders.gallerydl import (
     _IncompleteReadAdapter,
     download_url,
 )
+from hylde.result import DownloadError
 
 
 class TestIncompleteReadAdapter:
@@ -95,7 +96,8 @@ class TestDownloadUrl:
         ):
             result = download_url("https://example.com/file", "key")
 
-        assert result == []
+        assert isinstance(result, DownloadError)
+        assert result.retryable is True
 
     def test_deletes_temp_files_on_incomplete_read(self, fake_job, fake_collector):
         temp_file = fake_collector.files[0]
@@ -122,7 +124,8 @@ class TestDownloadUrl:
         ):
             result = download_url("https://example.com/file", "key")
 
-        assert result is None
+        assert isinstance(result, DownloadError)
+        assert result.retryable is False
 
     def test_returns_files_on_success(self, fake_job, fake_collector):
         fake_job.has_incomplete_read = False

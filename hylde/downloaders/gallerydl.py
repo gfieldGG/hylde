@@ -6,6 +6,7 @@ import gallery_dl as gdl  # type:ignore
 import gallery_dl.path  # type:ignore
 
 from hylde import lolg
+from hylde.result import DownloadError, DownloaderResult
 
 
 output_dir = Path(tempfile.gettempdir()) / "hylde" / "gallerydl"  # TODO expose setting
@@ -82,8 +83,8 @@ class GoodJob(gdl.job.DownloadJob):
         return _IncompleteReadAdapter(logger, self)
 
 
-def download_url(url: str, url_key: str) -> list[Path] | None:
-    """Download file for url. Return full file paths. Return empty list on retryable problems. Return None if download failed."""
+def download_url(url: str, url_key: str) -> DownloaderResult:
+    """Download file for url. Return full file paths or a user-facing error."""
     gdl.config.set(("extractor",), "directory", [f"{uuid.uuid4()}"])
     fc = FileCollector(url_key=url_key)
     job = GoodJob(url)
@@ -98,13 +99,14 @@ def download_url(url: str, url_key: str) -> list[Path] | None:
             if f.exists():
                 f.unlink()
                 lolg.debug(f"Deleted partial temp file '{f}'")
-        return []
+        return DownloadError("Source disconnected.", retryable=True)
 
     if fc.errors:
         lolg.error(f"gallerydl returned {len(fc.errors)} errors for '{url_key}'")
-        return None
+        return DownloadError("Download failed.", retryable=False)
 
     if not fc.files:
         lolg.error(f"gallerydl returned no filepaths for '{url_key}'.")
+        return DownloadError("Downloader returned no files.", retryable=False)
 
     return fc.files
