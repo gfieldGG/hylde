@@ -436,7 +436,7 @@ def download_url(url: str, url_key: str) -> DownloaderResult:
     """Download URL via JDownloader and return paths or a user-facing error."""
     try:
         connect()
-    except Exception as e:
+    except Exception:
         return DownloadError("JDownloader connection failed.", retryable=True)
 
     package_name = url_key
