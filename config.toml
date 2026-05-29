@@ -12,6 +12,10 @@ downloader_patterns = [
   [".", "jdownloader"],
 ]
 
+# Optional external downloader plugins. Values can be dotted modules or .py files.
+# [registry.downloader_modules]
+# bunkr = "/config/downloaders/bunkr.py"
+
 [downloader.jdownloader]
 email = "TO BE SET"
 password = "TO BE SET"
