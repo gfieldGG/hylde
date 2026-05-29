@@ -72,19 +72,23 @@ class TestLoadDownloader:
         critical.assert_called_once()
         assert "Failed to load downloader 'missing'" in critical.call_args.args[0]
 
-    def test_logs_loaded_downloaders(self):
+    def test_logs_unique_loaded_downloaders_and_debug_routes(self):
         with (
             patch.object(
                 registry.settings.registry,
                 "downloader_patterns",
-                [(r"example\\.com", "gallerydl")],
+                [(r"example\\.com", "gallerydl"), (r"other\\.com", "gallerydl")],
             ),
             patch.object(registry.lolg, "info") as info,
+            patch.object(registry.lolg, "debug") as debug,
         ):
             registry._build_downloader_patterns()
 
-        info.assert_called_once_with(
-            "Loaded downloaders: gallerydl=hylde.downloaders.gallerydl"
+        info.assert_called_once_with("Loaded downloaders: gallerydl")
+        debug.assert_called_once_with(
+            "Loaded downloader routes: "
+            "gallerydl=hylde.downloaders.gallerydl, "
+            "gallerydl=hylde.downloaders.gallerydl"
         )
 
 

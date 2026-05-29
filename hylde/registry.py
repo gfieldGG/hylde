@@ -59,11 +59,13 @@ def load_downloader(name: str):
 def _build_downloader_patterns():
     patterns = []
     loaded = []
+    loaded_names = set()
     for pattern, module_name in settings.registry.downloader_patterns:
         try:
             module = load_downloader(module_name)
             patterns.append((pattern, module))
             loaded.append(f"{module_name}={module.__name__}")
+            loaded_names.add(module_name)
         except Exception as exc:
             lolg.critical(
                 f"Failed to load downloader '{module_name}' for pattern "
@@ -71,7 +73,8 @@ def _build_downloader_patterns():
             )
             raise
 
-    lolg.info(f"Loaded downloaders: {', '.join(loaded)}")
+    lolg.info(f"Loaded downloaders: {', '.join(sorted(loaded_names))}")
+    lolg.debug(f"Loaded downloader routes: {', '.join(loaded)}")
     return patterns
 
 
