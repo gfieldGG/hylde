@@ -103,6 +103,30 @@ class TestLinkgrabberOfflineDetection:
         assert result == {999: package}
         job_finished.assert_called_once_with(456)
 
+    def test_wait_moves_online_linkgrabber_packages_to_downloads(self):
+        linkgrabber_package = SimpleNamespace(offlineCount=0)
+
+        with (
+            patch("hylde.downloaders.jdownloader._get_downloader_packages", return_value={}),
+            patch("hylde.downloaders.jdownloader._linkgrabber_job_finished", return_value=True),
+            patch(
+                "hylde.downloaders.jdownloader._get_linkgrabber_packages",
+                return_value={123: linkgrabber_package, 456: linkgrabber_package},
+            ),
+            patch(
+                "hylde.downloaders.jdownloader._linkgrabber_package_has_offline_links",
+                return_value=False,
+            ),
+            patch("hylde.downloaders.jdownloader._move_linkgrabber_packages_to_downloader") as move,
+            patch("hylde.downloaders.jdownloader.time.sleep"),
+        ):
+            result = jdownloader._wait_for_package_start_or_linkgrabber_failure(
+                "pkg", job_id=789, interval=0, max_retries=1
+            )
+
+        assert result is None
+        move.assert_called_once_with([123, 456])
+
     def test_download_url_requests_and_uses_linkgrabber_job_id(self):
         add_links = MagicMock()
         fake_jdd = SimpleNamespace(linkgrabber=SimpleNamespace(add_links=add_links))
@@ -125,6 +149,7 @@ class TestLinkgrabberOfflineDetection:
         assert result is None
         add_links_query = call_pyjd.call_args.kwargs["add_links_query"]
         assert add_links_query.assignJobID is True
+        assert add_links_query.autostart is False
         wait.assert_called_once_with(package_name="pkg", job_id=789)
 
     def test_resolve_finished_packages_reports_missing_link_without_dropping_success(self, tmp_path):

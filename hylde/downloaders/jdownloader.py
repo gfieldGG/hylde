@@ -135,7 +135,7 @@ def _get_linkgrabber_links(package_id: int):
             maxResults=1000,
         ),
     )
-    lolg.debug(f"Found {len(links)} LinkGrabber links in package '{package_id}'")
+    lolg.trace(f"Found {len(links)} LinkGrabber links in package '{package_id}'")
     return links
 
 
@@ -198,6 +198,16 @@ def _remove_package_from_linkgrabber(package_id: int):
     )
 
 
+def _move_linkgrabber_packages_to_downloader(package_ids: list[int]):
+    """Move online LinkGrabber packages to the Downloads list immediately."""
+    lolg.debug(f"Moving LinkGrabber package ids to downloader: {package_ids}")
+    _call_pyjd(
+        JDD.linkgrabber.move_to_downloadlist,
+        link_ids=[],
+        package_ids=package_ids,
+    )
+
+
 def _wait_for_package_start_or_linkgrabber_failure(
     package_name: str, job_id: int, interval=2, max_retries=60
 ) -> dict[int, FilePackage] | None:
@@ -206,6 +216,7 @@ def _wait_for_package_start_or_linkgrabber_failure(
         f"Waiting for package '{package_name}' to start downloading or fail in LinkGrabber..."
     )
     tries = 0
+    moved_linkgrabber_package_ids: set[int] = set()
     while tries < max_retries:
         packages = _get_downloader_packages(package_name)
         linkgrabber_finished = _linkgrabber_job_finished(job_id)
@@ -227,6 +238,15 @@ def _wait_for_package_start_or_linkgrabber_failure(
                         for failed_package_id in linkgrabber_packages:
                             _remove_package_from_linkgrabber(failed_package_id)
                         return None
+
+                package_ids_to_move = [
+                    package_id
+                    for package_id in linkgrabber_packages
+                    if package_id not in moved_linkgrabber_package_ids
+                ]
+                if package_ids_to_move:
+                    _move_linkgrabber_packages_to_downloader(package_ids_to_move)
+                    moved_linkgrabber_package_ids.update(package_ids_to_move)
 
             if packages:
                 lolg.debug(f"Found package '{package_name}' in download list.")
@@ -424,7 +444,7 @@ def download_url(url: str, url_key: str) -> list[Path] | None:
             JDD.linkgrabber.add_links,
             add_links_query=AddLinksQuery(
                 assignJobID=True,
-                autostart=True,
+                autostart=False,
                 autoExtract=False,
                 links=url,
                 packageName=package_name,
