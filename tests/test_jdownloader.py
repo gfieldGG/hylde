@@ -123,6 +123,13 @@ class TestLinkgrabberOfflineDetection:
                 "hylde.downloaders.jdownloader._linkgrabber_package_has_offline_links",
                 return_value=False,
             ),
+            patch(
+                "hylde.downloaders.jdownloader._isolate_linkgrabber_package_directory"
+            ) as isolate,
+            patch(
+                "hylde.downloaders.jdownloader._disable_archive_extraction_for_linkgrabber_packages",
+                return_value=None,
+            ) as disable_extraction,
             patch("hylde.downloaders.jdownloader._move_linkgrabber_packages_to_downloader") as move,
             patch("hylde.downloaders.jdownloader.time.sleep"),
         ):
@@ -132,6 +139,8 @@ class TestLinkgrabberOfflineDetection:
 
         assert isinstance(result, DownloadError)
         assert result.retryable is True
+        assert isolate.call_count == 2
+        disable_extraction.assert_called_once_with([123, 456])
         move.assert_called_once_with([123, 456])
 
     def test_download_url_requests_and_uses_linkgrabber_job_id(self):
@@ -157,7 +166,89 @@ class TestLinkgrabberOfflineDetection:
         add_links_query = call_pyjd.call_args.kwargs["add_links_query"]
         assert add_links_query.assignJobID is True
         assert add_links_query.autostart is False
+        assert add_links_query.autoExtract is False
+        assert add_links_query.destinationFolder is None
         wait.assert_called_once_with(package_name="pkg", job_id=789)
+
+    def test_isolate_linkgrabber_package_directory_preserves_posix_subpath(self):
+        package = SimpleNamespace(saveTo="/output/example collection/batch 01")
+
+        fake_jdd = SimpleNamespace(
+            linkgrabber=SimpleNamespace(set_download_directory=MagicMock())
+        )
+
+        with (
+            patch("hylde.downloaders.jdownloader.JDD", fake_jdd, create=True),
+            patch("hylde.downloaders.jdownloader._call_pyjd") as call_pyjd,
+        ):
+            jdownloader._isolate_linkgrabber_package_directory(123, package, "url-key")
+
+        assert call_pyjd.call_args.kwargs["directory"] == (
+            "/output/url-key/example collection/batch 01"
+        )
+        assert call_pyjd.call_args.kwargs["package_ids"] == [123]
+
+    def test_isolate_linkgrabber_package_directory_preserves_windows_subpath(self):
+        package = SimpleNamespace(saveTo=r"C:\jd-output\example collection\batch 01")
+        fake_jdd = SimpleNamespace(
+            linkgrabber=SimpleNamespace(set_download_directory=MagicMock())
+        )
+
+        with (
+            patch("hylde.downloaders.jdownloader.JDD", fake_jdd, create=True),
+            patch("hylde.downloaders.jdownloader.settings") as settings,
+            patch("hylde.downloaders.jdownloader._call_pyjd") as call_pyjd,
+        ):
+            settings.downloader.jdownloader.outputdir = r"C:\jd-output"
+            jdownloader._isolate_linkgrabber_package_directory(123, package, "url-key")
+
+        assert call_pyjd.call_args.kwargs["directory"] == (
+            r"C:\jd-output\url-key\example collection\batch 01"
+        )
+        assert call_pyjd.call_args.kwargs["package_ids"] == [123]
+
+    def test_get_package_directory_maps_posix_jd_path_to_external_path(self, tmp_path):
+        package = SimpleNamespace(saveTo="/output/url-key/album")
+
+        with patch("hylde.downloaders.jdownloader.settings") as settings:
+            settings.downloader.jdownloader.outputdir = "/output"
+            settings.downloader.jdownloader.externaloutputdir = str(tmp_path)
+            result = jdownloader._get_package_directory(package)
+
+        assert result == tmp_path / "url-key" / "album"
+
+    def test_get_package_directory_maps_windows_jd_path_to_external_path(self, tmp_path):
+        package = SimpleNamespace(saveTo=r"C:\jd-output\url-key\album")
+
+        with patch("hylde.downloaders.jdownloader.settings") as settings:
+            settings.downloader.jdownloader.outputdir = r"C:\jd-output"
+            settings.downloader.jdownloader.externaloutputdir = str(tmp_path)
+            result = jdownloader._get_package_directory(package)
+
+        assert result == tmp_path / "url-key" / "album"
+
+    def test_jd_join_under_output_rejects_unsafe_relative_parts(self):
+        with patch("hylde.downloaders.jdownloader.settings") as settings:
+            settings.downloader.jdownloader.outputdir = "/output"
+            try:
+                jdownloader._jd_join_under_output("url-key", "../escape")
+            except ValueError as e:
+                assert "parent references" in str(e)
+            else:
+                raise AssertionError("Expected ValueError")
+
+    def test_get_package_directory_rejects_save_to_outside_outputdir(self):
+        package = SimpleNamespace(saveTo="/other/url-key/album")
+
+        with patch("hylde.downloaders.jdownloader.settings") as settings:
+            settings.downloader.jdownloader.outputdir = "/output"
+            settings.downloader.jdownloader.externaloutputdir = "/external"
+            try:
+                jdownloader._get_package_directory(package)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("Expected ValueError")
 
     def test_resolve_finished_packages_reports_missing_link_without_dropping_success(self, tmp_path):
         package = SimpleNamespace(saveTo="/output/pkg")
@@ -228,6 +319,99 @@ class TestLinkgrabberOfflineDetection:
         assert paths == [file_path]
         assert len(failures) == 1
         assert "An Error occurred!" in failures[0]
+
+    def test_disable_archive_extraction_sets_each_linkgrabber_archive(self):
+        fake_jdd = SimpleNamespace(connection_helper=SimpleNamespace(action=MagicMock()))
+        fake_jdd.connection_helper.action.side_effect = [
+            [
+                {"archiveId": "archive-1"},
+                {"archiveId": "archive-2"},
+            ],
+            True,
+            True,
+        ]
+
+        with (
+            patch("hylde.downloaders.jdownloader.JDD", fake_jdd, create=True),
+            patch(
+                "hylde.downloaders.jdownloader._get_linkgrabber_links",
+                side_effect=[
+                    [SimpleNamespace(uuid=111), SimpleNamespace(uuid=222)],
+                    [SimpleNamespace(uuid=333)],
+                ],
+            ),
+        ):
+            result = jdownloader._disable_archive_extraction_for_linkgrabber_packages(
+                [123, 456]
+            )
+
+        assert result is None
+        fake_jdd.connection_helper.action.assert_any_call(
+            "/extraction/getArchiveInfo", [[111, 222, 333], [123, 456]]
+        )
+        fake_jdd.connection_helper.action.assert_any_call(
+            "/extraction/setArchiveSettings",
+            ["archive-1", {"archiveId": "archive-1", "autoExtract": False}],
+        )
+        fake_jdd.connection_helper.action.assert_any_call(
+            "/extraction/setArchiveSettings",
+            ["archive-2", {"archiveId": "archive-2", "autoExtract": False}],
+        )
+
+    def test_disable_archive_extraction_returns_retryable_error_on_api_failure(self):
+        fake_jdd = SimpleNamespace(connection_helper=SimpleNamespace(action=MagicMock()))
+        fake_jdd.connection_helper.action.side_effect = RuntimeError("boom")
+
+        with (
+            patch("hylde.downloaders.jdownloader.JDD", fake_jdd, create=True),
+            patch(
+                "hylde.downloaders.jdownloader._get_linkgrabber_links",
+                return_value=[SimpleNamespace(uuid=111)],
+            ),
+        ):
+            result = jdownloader._disable_archive_extraction_for_linkgrabber_packages([123])
+
+        assert isinstance(result, DownloadError)
+        assert result.retryable is True
+
+    def test_disable_archive_extraction_returns_retryable_error_on_link_query_failure(self):
+        with patch(
+            "hylde.downloaders.jdownloader._get_linkgrabber_links",
+            side_effect=RuntimeError("boom"),
+        ):
+            result = jdownloader._disable_archive_extraction_for_linkgrabber_packages([123])
+
+        assert isinstance(result, DownloadError)
+        assert result.retryable is True
+
+    def test_wait_cleans_linkgrabber_packages_when_archive_extraction_disable_fails(self):
+        linkgrabber_package = SimpleNamespace(offlineCount=0)
+
+        with (
+            patch("hylde.downloaders.jdownloader._get_downloader_packages", return_value={}),
+            patch("hylde.downloaders.jdownloader._linkgrabber_job_finished", return_value=True),
+            patch(
+                "hylde.downloaders.jdownloader._get_linkgrabber_packages",
+                return_value={123: linkgrabber_package, 456: linkgrabber_package},
+            ),
+            patch(
+                "hylde.downloaders.jdownloader._linkgrabber_package_has_offline_links",
+                return_value=False,
+            ),
+            patch("hylde.downloaders.jdownloader._isolate_linkgrabber_package_directory"),
+            patch(
+                "hylde.downloaders.jdownloader._disable_archive_extraction_for_linkgrabber_packages",
+                return_value=DownloadError("archive settings failed", retryable=True),
+            ),
+            patch("hylde.downloaders.jdownloader._remove_package_from_linkgrabber") as remove,
+        ):
+            result = jdownloader._wait_for_package_start_or_linkgrabber_failure(
+                "pkg", job_id=789, interval=0, max_retries=1
+            )
+
+        assert isinstance(result, DownloadError)
+        assert result.retryable is True
+        assert remove.call_count == 2
 
     def test_resolve_finished_packages_returns_incomplete_existing_file_for_cleanup(self, tmp_path):
         package = SimpleNamespace(status="Incomplete")

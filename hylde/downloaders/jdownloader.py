@@ -1,5 +1,5 @@
 import time
-from pathlib import Path
+from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
 
 from pyjd.myjd_connector import MyJDConnector, JDDevice  # type:ignore
 from pyjd.jd_types import (  # type:ignore
@@ -209,6 +209,130 @@ def _move_linkgrabber_packages_to_downloader(package_ids: list[int]):
     )
 
 
+def _jd_path_class() -> type[PurePath]:
+    """Return the PurePath class matching JDownloader's configured paths."""
+    output_dir = str(settings.downloader.jdownloader.outputdir)
+    if "\\" in output_dir or ":" in output_dir:
+        return PureWindowsPath
+    return PurePosixPath
+
+
+def _jd_output_dir() -> PurePath:
+    """Return JDownloader's configured output directory as a JD-side path."""
+    return _jd_path_class()(str(settings.downloader.jdownloader.outputdir))
+
+
+def _jd_relative_to_output(path: object) -> PurePath:
+    """Return a JD-side path relative to JDownloader's output directory."""
+    jd_path = _jd_path_class()
+    return jd_path(str(path)).relative_to(_jd_output_dir())
+
+
+def _jd_safe_relative_parts(path: object) -> tuple[str, ...]:
+    """Return safe relative parts from a JD-side path fragment."""
+    jd_path = _jd_path_class()
+    parsed_path = jd_path(str(path))
+    if parsed_path.is_absolute() or getattr(parsed_path, "drive", ""):
+        raise ValueError(f"Path fragment must be relative: {path!r}")
+
+    parts = tuple(part for part in parsed_path.parts if part not in ("", "."))
+    if any(part == ".." for part in parts):
+        raise ValueError(f"Path fragment must not contain parent references: {path!r}")
+    return parts
+
+
+def _jd_join_under_output(*relative_parts: object) -> str:
+    """Return a JD-side output path joined under JDownloader's output directory."""
+    output_dir = _jd_output_dir()
+    clean_parts = [
+        part
+        for relative_part in relative_parts
+        for part in _jd_safe_relative_parts(relative_part)
+    ]
+    return str(output_dir.joinpath(*clean_parts))
+
+
+def _external_path_for_jd_save_to(save_to: object) -> Path:
+    """Map a JD-side save path to Hylde's mounted filesystem path."""
+    relative_subpath = _jd_relative_to_output(save_to)
+    return Path(settings.downloader.jdownloader.externaloutputdir).joinpath(
+        *relative_subpath.parts
+    )
+
+
+def _isolate_linkgrabber_package_directory(package_id: int, package, url_key: str):
+    """Move a LinkGrabber package under this Hylde job while preserving JD subfolders."""
+    try:
+        original_subpath = _jd_relative_to_output(package.saveTo)
+    except ValueError:
+        original_subpath = _jd_path_class()(str(package_id))
+
+    destination = _jd_join_under_output(url_key, original_subpath)
+    lolg.debug(
+        f"Setting LinkGrabber package '{package_id}' destination to '{destination}'"
+    )
+    _call_pyjd(
+        JDD.linkgrabber.set_download_directory,
+        directory=destination,
+        package_ids=[package_id],
+    )
+
+
+def _disable_archive_extraction_for_linkgrabber_packages(
+    package_ids: list[int],
+) -> DownloadError | None:
+    """Disable extraction for archives recognized in LinkGrabber packages."""
+    try:
+        link_ids = [
+            link.uuid
+            for package_id in package_ids
+            for link in _get_linkgrabber_links(package_id)
+            if getattr(link, "uuid", None) is not None
+        ]
+    except Exception as e:
+        lolg.error(f"Could not query JDownloader LinkGrabber links: {e}")
+        return DownloadError("JDownloader archive settings failed.", retryable=True)
+    if not link_ids:
+        return DownloadError("JDownloader LinkGrabber package has no links.", retryable=True)
+
+    try:
+        archive_info = JDD.connection_helper.action(
+            "/extraction/getArchiveInfo", [link_ids, package_ids]
+        )
+    except Exception as e:
+        lolg.error(f"Could not query JDownloader archive info: {e}")
+        return DownloadError("JDownloader archive settings failed.", retryable=True)
+
+    archive_ids = [
+        archive.get("archiveId")
+        for archive in archive_info or []
+        if archive.get("archiveId")
+    ]
+    if not archive_ids:
+        lolg.debug("No JDownloader archives found in LinkGrabber packages.")
+        return None
+
+    lolg.debug(f"Disabling extraction for {len(archive_ids)} JDownloader archive(s).")
+    for archive_id in archive_ids:
+        try:
+            result = JDD.connection_helper.action(
+                "/extraction/setArchiveSettings",
+                [archive_id, {"archiveId": archive_id, "autoExtract": False}],
+            )
+        except Exception as e:
+            lolg.error(f"Could not disable extraction for archive '{archive_id}': {e}")
+            return DownloadError("JDownloader archive settings failed.", retryable=True)
+
+        if result is not True:
+            lolg.error(
+                f"JDownloader returned {result!r} while disabling extraction for "
+                f"archive '{archive_id}'."
+            )
+            return DownloadError("JDownloader archive settings failed.", retryable=True)
+
+    return None
+
+
 def _wait_for_package_start_or_linkgrabber_failure(
     package_name: str, job_id: int, interval=2, max_retries=60
 ) -> dict[int, FilePackage] | DownloadError:
@@ -246,6 +370,19 @@ def _wait_for_package_start_or_linkgrabber_failure(
                     if package_id not in moved_linkgrabber_package_ids
                 ]
                 if package_ids_to_move:
+                    for package_id in package_ids_to_move:
+                        _isolate_linkgrabber_package_directory(
+                            package_id, linkgrabber_packages[package_id], package_name
+                        )
+
+                    extraction_error = _disable_archive_extraction_for_linkgrabber_packages(
+                        package_ids_to_move
+                    )
+                    if extraction_error:
+                        for failed_package_id in linkgrabber_packages:
+                            _remove_package_from_linkgrabber(failed_package_id)
+                        return extraction_error
+
                     _move_linkgrabber_packages_to_downloader(package_ids_to_move)
                     moved_linkgrabber_package_ids.update(package_ids_to_move)
 
@@ -342,17 +479,16 @@ def _remove_package_from_downloader(package_id: int):
     )
 
 
+def _get_package_directory(package: FilePackage) -> Path:
+    """Map JDownloader's internal package save path to Hylde's mounted filesystem path."""
+    package_dir = _external_path_for_jd_save_to(package.saveTo)
+    lolg.trace(f"Calculated package directory: {package_dir}")
+    return package_dir
+
+
 def _get_full_file_path(file_name: str, package: FilePackage) -> Path | None:
     """Map JDownloader's internal save path to Hylde's mounted filesystem path."""
-    package_subpath = Path(package.saveTo).relative_to(
-        settings.downloader.jdownloader.outputdir
-    )
-    lolg.trace(f"Calculated package subpath: {package_subpath}")
-    full_path = (
-        Path(settings.downloader.jdownloader.externaloutputdir)
-        / package_subpath
-        / file_name
-    )
+    full_path = _get_package_directory(package) / file_name
     if not full_path.exists():
         lolg.debug(f"File '{full_path}' not found.")
         return None
