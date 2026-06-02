@@ -117,7 +117,11 @@ class TestHandleRequest:
         url_key = server.get_url_key(url)
         server.set_cached_file(
             url_key,
-            {"error": True, "message": "JDownloader connection failed.", "retryable": True},
+            {
+                "error": True,
+                "message": "JDownloader connection failed.",
+                "retryable": True,
+            },
         )
 
         with server.app.test_client() as client:

@@ -89,10 +89,11 @@ class TestDownloadUrl:
     def test_returns_empty_list_on_incomplete_read(self, fake_job, fake_collector):
         fake_job.has_incomplete_read = True
 
-        with patch(
-            "hylde.downloaders.gallerydl.GoodJob", return_value=fake_job
-        ), patch(
-            "hylde.downloaders.gallerydl.FileCollector", return_value=fake_collector
+        with (
+            patch("hylde.downloaders.gallerydl.GoodJob", return_value=fake_job),
+            patch(
+                "hylde.downloaders.gallerydl.FileCollector", return_value=fake_collector
+            ),
         ):
             result = download_url("https://example.com/file", "key")
 
@@ -104,10 +105,11 @@ class TestDownloadUrl:
         assert temp_file.exists()
         fake_job.has_incomplete_read = True
 
-        with patch(
-            "hylde.downloaders.gallerydl.GoodJob", return_value=fake_job
-        ), patch(
-            "hylde.downloaders.gallerydl.FileCollector", return_value=fake_collector
+        with (
+            patch("hylde.downloaders.gallerydl.GoodJob", return_value=fake_job),
+            patch(
+                "hylde.downloaders.gallerydl.FileCollector", return_value=fake_collector
+            ),
         ):
             download_url("https://example.com/file", "key")
 
@@ -117,10 +119,11 @@ class TestDownloadUrl:
         fake_job.has_incomplete_read = False
         fake_collector.errors = [Path("/tmp/error.txt")]
 
-        with patch(
-            "hylde.downloaders.gallerydl.GoodJob", return_value=fake_job
-        ), patch(
-            "hylde.downloaders.gallerydl.FileCollector", return_value=fake_collector
+        with (
+            patch("hylde.downloaders.gallerydl.GoodJob", return_value=fake_job),
+            patch(
+                "hylde.downloaders.gallerydl.FileCollector", return_value=fake_collector
+            ),
         ):
             result = download_url("https://example.com/file", "key")
 
@@ -131,10 +134,11 @@ class TestDownloadUrl:
         fake_job.has_incomplete_read = False
         fake_collector.errors = []
 
-        with patch(
-            "hylde.downloaders.gallerydl.GoodJob", return_value=fake_job
-        ), patch(
-            "hylde.downloaders.gallerydl.FileCollector", return_value=fake_collector
+        with (
+            patch("hylde.downloaders.gallerydl.GoodJob", return_value=fake_job),
+            patch(
+                "hylde.downloaders.gallerydl.FileCollector", return_value=fake_collector
+            ),
         ):
             result = download_url("https://example.com/file", "key")
 

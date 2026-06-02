@@ -13,6 +13,7 @@ import hylde.wrapper as hydl
 # initialize flask app
 app = Flask(__name__)
 
+
 def _cache_dir() -> Path:
     return Path(settings.cachedir).resolve()
 

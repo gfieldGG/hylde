@@ -293,7 +293,9 @@ def _disable_archive_extraction_for_linkgrabber_packages(
         lolg.error(f"Could not query JDownloader LinkGrabber links: {e}")
         return DownloadError("JDownloader archive settings failed.", retryable=True)
     if not link_ids:
-        return DownloadError("JDownloader LinkGrabber package has no links.", retryable=True)
+        return DownloadError(
+            "JDownloader LinkGrabber package has no links.", retryable=True
+        )
 
     try:
         archive_info = JDD.connection_helper.action(
@@ -355,7 +357,9 @@ def _wait_for_package_start_or_linkgrabber_failure(
                     if offline_count is None:
                         offline_count = getattr(package, "availableOfflineCount", 0)
 
-                    if offline_count or _linkgrabber_package_has_offline_links(package_id):
+                    if offline_count or _linkgrabber_package_has_offline_links(
+                        package_id
+                    ):
                         lolg.error(
                             f"Package '{package_name}' failed in LinkGrabber: "
                             f"{offline_count} offline link(s)."
@@ -375,8 +379,10 @@ def _wait_for_package_start_or_linkgrabber_failure(
                             package_id, linkgrabber_packages[package_id], package_name
                         )
 
-                    extraction_error = _disable_archive_extraction_for_linkgrabber_packages(
-                        package_ids_to_move
+                    extraction_error = (
+                        _disable_archive_extraction_for_linkgrabber_packages(
+                            package_ids_to_move
+                        )
                     )
                     if extraction_error:
                         for failed_package_id in linkgrabber_packages:
@@ -533,7 +539,9 @@ def _delete_partial_files(file_paths: list[Path]):
             file_path.unlink()
 
 
-def _resolve_finished_packages(packages: dict[int, FilePackage]) -> tuple[list[Path], list[str]]:
+def _resolve_finished_packages(
+    packages: dict[int, FilePackage],
+) -> tuple[list[Path], list[str]]:
     """Return resolved file paths and failure reasons for finished JDownloader packages."""
     full_file_paths: list[Path] = []
     failures: list[str] = []
@@ -605,7 +613,9 @@ def download_url(url: str, url_key: str) -> DownloaderResult:
 
     packages = _wait_for_package_finish(package_name)
     if isinstance(packages, DownloadError):
-        lolg.warning(f"JDownloader failed while waiting for '{url_key}': {packages.message}")
+        lolg.warning(
+            f"JDownloader failed while waiting for '{url_key}': {packages.message}"
+        )
         return packages
 
     full_file_paths, failures = _resolve_finished_packages(packages)

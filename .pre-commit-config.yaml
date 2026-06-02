@@ -1,0 +1,20 @@
+repos:
+  - repo: local
+    hooks:
+      - id: uv-lock-check
+        name: Check uv.lock is current
+        entry: uv lock --check
+        language: system
+        pass_filenames: false
+      - id: ruff-check
+        name: Ruff lint
+        entry: uv run ruff check
+        language: system
+        types_or: [python, pyi]
+        files: ^(hylde|tests)/
+      - id: ruff-format
+        name: Ruff format
+        entry: uv run ruff format --check
+        language: system
+        types_or: [python, pyi]
+        files: ^(hylde|tests)/

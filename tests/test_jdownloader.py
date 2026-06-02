@@ -18,14 +18,24 @@ class TestLinkgrabberOfflineDetection:
         package = SimpleNamespace(offlineCount=1)
 
         with (
-            patch("hylde.downloaders.jdownloader._get_downloader_packages", return_value={}),
-            patch("hylde.downloaders.jdownloader._linkgrabber_job_finished", return_value=True),
+            patch(
+                "hylde.downloaders.jdownloader._get_downloader_packages",
+                return_value={},
+            ),
+            patch(
+                "hylde.downloaders.jdownloader._linkgrabber_job_finished",
+                return_value=True,
+            ),
             patch(
                 "hylde.downloaders.jdownloader._get_linkgrabber_packages",
                 return_value={123: package},
             ),
-            patch("hylde.downloaders.jdownloader._linkgrabber_package_has_offline_links") as has_offline_links,
-            patch("hylde.downloaders.jdownloader._remove_package_from_linkgrabber") as remove,
+            patch(
+                "hylde.downloaders.jdownloader._linkgrabber_package_has_offline_links"
+            ) as has_offline_links,
+            patch(
+                "hylde.downloaders.jdownloader._remove_package_from_linkgrabber"
+            ) as remove,
         ):
             result = jdownloader._wait_for_package_start_or_linkgrabber_failure(
                 "pkg", job_id=456, interval=0, max_retries=1
@@ -37,12 +47,20 @@ class TestLinkgrabberOfflineDetection:
         has_offline_links.assert_not_called()
         remove.assert_called_once_with(123)
 
-    def test_wait_returns_none_and_cleans_linkgrabber_package_when_child_link_offline(self):
+    def test_wait_returns_none_and_cleans_linkgrabber_package_when_child_link_offline(
+        self,
+    ):
         package = SimpleNamespace(offlineCount=0)
 
         with (
-            patch("hylde.downloaders.jdownloader._get_downloader_packages", return_value={}),
-            patch("hylde.downloaders.jdownloader._linkgrabber_job_finished", return_value=True),
+            patch(
+                "hylde.downloaders.jdownloader._get_downloader_packages",
+                return_value={},
+            ),
+            patch(
+                "hylde.downloaders.jdownloader._linkgrabber_job_finished",
+                return_value=True,
+            ),
             patch(
                 "hylde.downloaders.jdownloader._get_linkgrabber_packages",
                 return_value={123: package},
@@ -51,7 +69,9 @@ class TestLinkgrabberOfflineDetection:
                 "hylde.downloaders.jdownloader._linkgrabber_package_has_offline_links",
                 return_value=True,
             ),
-            patch("hylde.downloaders.jdownloader._remove_package_from_linkgrabber") as remove,
+            patch(
+                "hylde.downloaders.jdownloader._remove_package_from_linkgrabber"
+            ) as remove,
         ):
             result = jdownloader._wait_for_package_start_or_linkgrabber_failure(
                 "pkg", job_id=456, interval=0, max_retries=1
@@ -74,7 +94,9 @@ class TestLinkgrabberOfflineDetection:
                 "hylde.downloaders.jdownloader._linkgrabber_job_finished",
                 return_value=False,
             ),
-            patch("hylde.downloaders.jdownloader._get_linkgrabber_packages") as get_linkgrabber_packages,
+            patch(
+                "hylde.downloaders.jdownloader._get_linkgrabber_packages"
+            ) as get_linkgrabber_packages,
             patch("hylde.downloaders.jdownloader.time.sleep"),
         ):
             result = jdownloader._wait_for_package_start_or_linkgrabber_failure(
@@ -113,8 +135,14 @@ class TestLinkgrabberOfflineDetection:
         linkgrabber_package = SimpleNamespace(offlineCount=0)
 
         with (
-            patch("hylde.downloaders.jdownloader._get_downloader_packages", return_value={}),
-            patch("hylde.downloaders.jdownloader._linkgrabber_job_finished", return_value=True),
+            patch(
+                "hylde.downloaders.jdownloader._get_downloader_packages",
+                return_value={},
+            ),
+            patch(
+                "hylde.downloaders.jdownloader._linkgrabber_job_finished",
+                return_value=True,
+            ),
             patch(
                 "hylde.downloaders.jdownloader._get_linkgrabber_packages",
                 return_value={123: linkgrabber_package, 456: linkgrabber_package},
@@ -130,7 +158,9 @@ class TestLinkgrabberOfflineDetection:
                 "hylde.downloaders.jdownloader._disable_archive_extraction_for_linkgrabber_packages",
                 return_value=None,
             ) as disable_extraction,
-            patch("hylde.downloaders.jdownloader._move_linkgrabber_packages_to_downloader") as move,
+            patch(
+                "hylde.downloaders.jdownloader._move_linkgrabber_packages_to_downloader"
+            ) as move,
             patch("hylde.downloaders.jdownloader.time.sleep"),
         ):
             result = jdownloader._wait_for_package_start_or_linkgrabber_failure(
@@ -150,7 +180,10 @@ class TestLinkgrabberOfflineDetection:
         with (
             patch("hylde.downloaders.jdownloader.JDD", fake_jdd, create=True),
             patch("hylde.downloaders.jdownloader.connect"),
-            patch("hylde.downloaders.jdownloader._get_downloader_packages", return_value={}),
+            patch(
+                "hylde.downloaders.jdownloader._get_downloader_packages",
+                return_value={},
+            ),
             patch(
                 "hylde.downloaders.jdownloader._call_pyjd",
                 return_value=SimpleNamespace(id=789),
@@ -217,7 +250,9 @@ class TestLinkgrabberOfflineDetection:
 
         assert result == tmp_path / "url-key" / "album"
 
-    def test_get_package_directory_maps_windows_jd_path_to_external_path(self, tmp_path):
+    def test_get_package_directory_maps_windows_jd_path_to_external_path(
+        self, tmp_path
+    ):
         package = SimpleNamespace(saveTo=r"C:\jd-output\url-key\album")
 
         with patch("hylde.downloaders.jdownloader.settings") as settings:
@@ -250,7 +285,9 @@ class TestLinkgrabberOfflineDetection:
             else:
                 raise AssertionError("Expected ValueError")
 
-    def test_resolve_finished_packages_reports_missing_link_without_dropping_success(self, tmp_path):
+    def test_resolve_finished_packages_reports_missing_link_without_dropping_success(
+        self, tmp_path
+    ):
         package = SimpleNamespace(saveTo="/output/pkg")
         good_path = tmp_path / "good.jpg"
         good_path.write_text("ok")
@@ -292,7 +329,9 @@ class TestLinkgrabberOfflineDetection:
         assert "missing.jpg" in failures[0]
         assert "missing file on disk" in failures[0]
 
-    def test_resolve_finished_packages_reports_package_error_even_if_link_resolves(self, tmp_path):
+    def test_resolve_finished_packages_reports_package_error_even_if_link_resolves(
+        self, tmp_path
+    ):
         package = SimpleNamespace(status="An Error occurred!  (bunkr.si)")
         file_path = tmp_path / "file.jpg"
         file_path.write_text("ok")
@@ -312,7 +351,10 @@ class TestLinkgrabberOfflineDetection:
                 "hylde.downloaders.jdownloader._get_download_links_from_package",
                 return_value=[link],
             ),
-            patch("hylde.downloaders.jdownloader._get_full_file_path", return_value=file_path),
+            patch(
+                "hylde.downloaders.jdownloader._get_full_file_path",
+                return_value=file_path,
+            ),
         ):
             paths, failures = jdownloader._resolve_finished_packages({123: package})
 
@@ -321,7 +363,9 @@ class TestLinkgrabberOfflineDetection:
         assert "An Error occurred!" in failures[0]
 
     def test_disable_archive_extraction_sets_each_linkgrabber_archive(self):
-        fake_jdd = SimpleNamespace(connection_helper=SimpleNamespace(action=MagicMock()))
+        fake_jdd = SimpleNamespace(
+            connection_helper=SimpleNamespace(action=MagicMock())
+        )
         fake_jdd.connection_helper.action.side_effect = [
             [
                 {"archiveId": "archive-1"},
@@ -359,7 +403,9 @@ class TestLinkgrabberOfflineDetection:
         )
 
     def test_disable_archive_extraction_returns_retryable_error_on_api_failure(self):
-        fake_jdd = SimpleNamespace(connection_helper=SimpleNamespace(action=MagicMock()))
+        fake_jdd = SimpleNamespace(
+            connection_helper=SimpleNamespace(action=MagicMock())
+        )
         fake_jdd.connection_helper.action.side_effect = RuntimeError("boom")
 
         with (
@@ -369,27 +415,41 @@ class TestLinkgrabberOfflineDetection:
                 return_value=[SimpleNamespace(uuid=111)],
             ),
         ):
-            result = jdownloader._disable_archive_extraction_for_linkgrabber_packages([123])
+            result = jdownloader._disable_archive_extraction_for_linkgrabber_packages(
+                [123]
+            )
 
         assert isinstance(result, DownloadError)
         assert result.retryable is True
 
-    def test_disable_archive_extraction_returns_retryable_error_on_link_query_failure(self):
+    def test_disable_archive_extraction_returns_retryable_error_on_link_query_failure(
+        self,
+    ):
         with patch(
             "hylde.downloaders.jdownloader._get_linkgrabber_links",
             side_effect=RuntimeError("boom"),
         ):
-            result = jdownloader._disable_archive_extraction_for_linkgrabber_packages([123])
+            result = jdownloader._disable_archive_extraction_for_linkgrabber_packages(
+                [123]
+            )
 
         assert isinstance(result, DownloadError)
         assert result.retryable is True
 
-    def test_wait_cleans_linkgrabber_packages_when_archive_extraction_disable_fails(self):
+    def test_wait_cleans_linkgrabber_packages_when_archive_extraction_disable_fails(
+        self,
+    ):
         linkgrabber_package = SimpleNamespace(offlineCount=0)
 
         with (
-            patch("hylde.downloaders.jdownloader._get_downloader_packages", return_value={}),
-            patch("hylde.downloaders.jdownloader._linkgrabber_job_finished", return_value=True),
+            patch(
+                "hylde.downloaders.jdownloader._get_downloader_packages",
+                return_value={},
+            ),
+            patch(
+                "hylde.downloaders.jdownloader._linkgrabber_job_finished",
+                return_value=True,
+            ),
             patch(
                 "hylde.downloaders.jdownloader._get_linkgrabber_packages",
                 return_value={123: linkgrabber_package, 456: linkgrabber_package},
@@ -398,12 +458,16 @@ class TestLinkgrabberOfflineDetection:
                 "hylde.downloaders.jdownloader._linkgrabber_package_has_offline_links",
                 return_value=False,
             ),
-            patch("hylde.downloaders.jdownloader._isolate_linkgrabber_package_directory"),
+            patch(
+                "hylde.downloaders.jdownloader._isolate_linkgrabber_package_directory"
+            ),
             patch(
                 "hylde.downloaders.jdownloader._disable_archive_extraction_for_linkgrabber_packages",
                 return_value=DownloadError("archive settings failed", retryable=True),
             ),
-            patch("hylde.downloaders.jdownloader._remove_package_from_linkgrabber") as remove,
+            patch(
+                "hylde.downloaders.jdownloader._remove_package_from_linkgrabber"
+            ) as remove,
         ):
             result = jdownloader._wait_for_package_start_or_linkgrabber_failure(
                 "pkg", job_id=789, interval=0, max_retries=1
@@ -413,7 +477,9 @@ class TestLinkgrabberOfflineDetection:
         assert result.retryable is True
         assert remove.call_count == 2
 
-    def test_resolve_finished_packages_returns_incomplete_existing_file_for_cleanup(self, tmp_path):
+    def test_resolve_finished_packages_returns_incomplete_existing_file_for_cleanup(
+        self, tmp_path
+    ):
         package = SimpleNamespace(status="Incomplete")
         file_path = tmp_path / "partial.jpg"
         file_path.write_text("partial")
@@ -433,7 +499,10 @@ class TestLinkgrabberOfflineDetection:
                 "hylde.downloaders.jdownloader._get_download_links_from_package",
                 return_value=[link],
             ),
-            patch("hylde.downloaders.jdownloader._get_full_file_path", return_value=file_path),
+            patch(
+                "hylde.downloaders.jdownloader._get_full_file_path",
+                return_value=file_path,
+            ),
         ):
             paths, failures = jdownloader._resolve_finished_packages({123: package})
 
@@ -442,7 +511,9 @@ class TestLinkgrabberOfflineDetection:
         assert "not marked finished" in failures[0]
         assert "incomplete bytes" in failures[0]
 
-    def test_download_url_deletes_partial_files_and_returns_none_when_finished_job_incomplete(self, tmp_path):
+    def test_download_url_deletes_partial_files_and_returns_none_when_finished_job_incomplete(
+        self, tmp_path
+    ):
         package = SimpleNamespace(status="An Error occurred!  (bunkr.si)")
         partial_file = tmp_path / "good.jpg"
         partial_file.write_text("partial success")
@@ -461,7 +532,9 @@ class TestLinkgrabberOfflineDetection:
                 "hylde.downloaders.jdownloader._resolve_finished_packages",
                 return_value=([partial_file], ["missing link"]),
             ),
-            patch("hylde.downloaders.jdownloader._remove_package_from_downloader") as remove,
+            patch(
+                "hylde.downloaders.jdownloader._remove_package_from_downloader"
+            ) as remove,
         ):
             result = jdownloader.download_url("http://example.com/file", "pkg")
 

@@ -195,7 +195,9 @@ class TestDownloadFile:
 
     def test_downloader_called_with_url_and_key(self, tmp_path: Path):
         mock_downloader = MagicMock()
-        mock_downloader.download_url.return_value = DownloadError("retry later", retryable=True)
+        mock_downloader.download_url.return_value = DownloadError(
+            "retry later", retryable=True
+        )
         mock_downloader.__name__ = "MockDownloader"
 
         with (
