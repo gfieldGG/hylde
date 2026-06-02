@@ -1,26 +1,40 @@
-[tool.poetry]
+[project]
 name = "hylde"
 version = "0.11.3"
 description = "An external hydrus downloader."
-authors = ["Your Name <you@example.com>"]
+authors = [{ name = "Your Name", email = "you@example.com" }]
 readme = "README.md"
+requires-python = ">=3.11,<3.16"
+dependencies = [
+    "flask>=3.1.0,<4.0.0",
+    "requests>=2.32.3,<3.0.0",
+    "loguru>=0.7.2",
+    "pyjd>=1.0.13,<2.0.0",
+    "dynaconf>=3.2.10,<4.0.0",
+    "gallery-dl @ git+https://codeberg.org/mikf/gallery-dl.git@master",
+]
 
-[tool.poetry.dependencies]
-python = ">=3.11, <3.16"
-Flask = "^3.1.0"
-requests = "^2.32.3"
-loguru = ">=0.7.2"
-pyjd = "^1.0.13"
-dynaconf = "^3.2.10"
-gallery-dl = { git = "https://codeberg.org/mikf/gallery-dl.git", branch = "master" }
+[dependency-groups]
+dev = [
+    "ruff>=0.9.9",
+    "ty>=0.0.42",
+    "notebook>=7.2.2",
+    "types-toml>=0.10.8.20240310",
+    "types-requests>=2.32.0.20241016",
+    "pytest>=9.0.3,<10.0.0",
+]
 
-[tool.poetry.group.dev.dependencies]
-ruff = ">=0.9.9"
-mypy = ">=1.15.0"
-notebook = ">=7.2.2"
-types-toml = ">=0.10.8.20240310"
-types-requests = ">=2.32.0.20241016"
-pytest = "^9.0.3"
+[tool.ty.rules]
+unused-type-ignore-comment = "ignore"
+
+[tool.ty.analysis]
+replace-imports-with-any = ["gallery_dl.**", "pyjd.**"]
+
+[tool.ty.src]
+include = ["hylde"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.pytest.ini_options]
 # pydantic (via pyjd) DeprecationWarnings
@@ -30,5 +44,5 @@ filterwarnings = [
 ]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"

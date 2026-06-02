@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypedDict
+from typing import TypeGuard, TypedDict, cast
 
 
 class ErrorCache(TypedDict):
@@ -27,5 +28,8 @@ WrapperResult = str | DownloadError
 CacheEntry = str | ErrorCache
 
 
-def is_error_cache(value: object) -> bool:
-    return isinstance(value, dict) and value.get("error") is True
+def is_error_cache(value: object) -> TypeGuard[ErrorCache]:
+    return (
+        isinstance(value, Mapping)
+        and cast(Mapping[str, object], value).get("error") is True
+    )

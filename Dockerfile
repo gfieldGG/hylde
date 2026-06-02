@@ -3,25 +3,25 @@ FROM python:3.14-slim
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
-    POETRY_VERSION=2.2.1
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    PATH="/hylde/.venv/bin:$PATH"
 
 # Set the working directory inside the container
 WORKDIR /hylde
 
-# Install Poetry
-RUN apt-get update && apt-get install -y curl && \
-    curl -sSL https://install.python-poetry.org | python3 - && \
-    ln -s /root/.local/bin/poetry /usr/local/bin/poetry
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:0.11.17 /uv /uvx /usr/local/bin/
 
 # Copy the project files into the container
-COPY pyproject.toml poetry.lock config.toml README.md ./
+COPY pyproject.toml uv.lock config.toml README.md ./
 COPY hylde ./hylde
 
 # Install dependencies
-RUN poetry install --without dev --no-interaction --no-ansi
+RUN uv sync --locked --no-dev
 
 # Expose the port the Flask app runs on
 EXPOSE 5000
 
 # Define the command to run the Flask app
-CMD ["poetry", "run", "python", "hylde/server.py"]
+CMD ["python", "hylde/server.py"]

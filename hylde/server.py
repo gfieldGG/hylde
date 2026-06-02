@@ -207,6 +207,15 @@ def handle_request():
         remove_cached_file(url_key=url_key)
         return "Failed to download the file.", 500
 
+    if cached_filename is None:
+        lolg.error(f"Download finished without a cache entry for '{url_key}'")
+        return "Download did not produce a cache entry. Please try again.", 503
+
+    if not isinstance(cached_filename, str):
+        lolg.error(f"Unexpected cache entry for '{url_key}': {cached_filename}")
+        remove_cached_file(url_key=url_key)
+        return "Unexpected cache entry. Please try again.", 503
+
     # found cache entry
     cached_file = _get_file(cached_filename)
     if not cached_file.exists():
