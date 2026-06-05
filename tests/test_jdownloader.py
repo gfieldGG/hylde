@@ -131,10 +131,14 @@ class TestLinkgrabberOfflineDetection:
         assert result == {999: package}
         job_finished.assert_called_once_with(456)
 
-    def test_wait_moves_online_linkgrabber_packages_to_downloads(self):
+    def test_wait_moves_online_linkgrabber_packages_without_changing_directory(self):
         linkgrabber_package = SimpleNamespace(offlineCount=0)
+        fake_jdd = SimpleNamespace(
+            linkgrabber=SimpleNamespace(set_download_directory=MagicMock())
+        )
 
         with (
+            patch("hylde.downloaders.jdownloader.JDD", fake_jdd, create=True),
             patch(
                 "hylde.downloaders.jdownloader._get_downloader_packages",
                 return_value={},
@@ -152,9 +156,6 @@ class TestLinkgrabberOfflineDetection:
                 return_value=False,
             ),
             patch(
-                "hylde.downloaders.jdownloader._isolate_linkgrabber_package_directory"
-            ) as isolate,
-            patch(
                 "hylde.downloaders.jdownloader._disable_archive_extraction_for_linkgrabber_packages",
                 return_value=None,
             ) as disable_extraction,
@@ -169,9 +170,9 @@ class TestLinkgrabberOfflineDetection:
 
         assert isinstance(result, DownloadError)
         assert result.retryable is True
-        assert isolate.call_count == 2
         disable_extraction.assert_called_once_with([123, 456])
         move.assert_called_once_with([123, 456])
+        fake_jdd.linkgrabber.set_download_directory.assert_not_called()
 
     def test_download_url_requests_and_uses_linkgrabber_job_id(self):
         add_links = MagicMock()
@@ -203,43 +204,6 @@ class TestLinkgrabberOfflineDetection:
         assert add_links_query.destinationFolder is None
         wait.assert_called_once_with(package_name="pkg", job_id=789)
 
-    def test_isolate_linkgrabber_package_directory_preserves_posix_subpath(self):
-        package = SimpleNamespace(saveTo="/output/example collection/batch 01")
-
-        fake_jdd = SimpleNamespace(
-            linkgrabber=SimpleNamespace(set_download_directory=MagicMock())
-        )
-
-        with (
-            patch("hylde.downloaders.jdownloader.JDD", fake_jdd, create=True),
-            patch("hylde.downloaders.jdownloader._call_pyjd") as call_pyjd,
-        ):
-            jdownloader._isolate_linkgrabber_package_directory(123, package, "url-key")
-
-        assert call_pyjd.call_args.kwargs["directory"] == (
-            "/output/url-key/example collection/batch 01"
-        )
-        assert call_pyjd.call_args.kwargs["package_ids"] == [123]
-
-    def test_isolate_linkgrabber_package_directory_preserves_windows_subpath(self):
-        package = SimpleNamespace(saveTo=r"C:\jd-output\example collection\batch 01")
-        fake_jdd = SimpleNamespace(
-            linkgrabber=SimpleNamespace(set_download_directory=MagicMock())
-        )
-
-        with (
-            patch("hylde.downloaders.jdownloader.JDD", fake_jdd, create=True),
-            patch("hylde.downloaders.jdownloader.settings") as settings,
-            patch("hylde.downloaders.jdownloader._call_pyjd") as call_pyjd,
-        ):
-            settings.downloader.jdownloader.outputdir = r"C:\jd-output"
-            jdownloader._isolate_linkgrabber_package_directory(123, package, "url-key")
-
-        assert call_pyjd.call_args.kwargs["directory"] == (
-            r"C:\jd-output\url-key\example collection\batch 01"
-        )
-        assert call_pyjd.call_args.kwargs["package_ids"] == [123]
-
     def test_get_package_directory_maps_posix_jd_path_to_external_path(self, tmp_path):
         package = SimpleNamespace(saveTo="/output/url-key/album")
 
@@ -261,16 +225,6 @@ class TestLinkgrabberOfflineDetection:
             result = jdownloader._get_package_directory(package)
 
         assert result == tmp_path / "url-key" / "album"
-
-    def test_jd_join_under_output_rejects_unsafe_relative_parts(self):
-        with patch("hylde.downloaders.jdownloader.settings") as settings:
-            settings.downloader.jdownloader.outputdir = "/output"
-            try:
-                jdownloader._jd_join_under_output("url-key", "../escape")
-            except ValueError as e:
-                assert "parent references" in str(e)
-            else:
-                raise AssertionError("Expected ValueError")
 
     def test_get_package_directory_rejects_save_to_outside_outputdir(self):
         package = SimpleNamespace(saveTo="/other/url-key/album")
@@ -457,9 +411,6 @@ class TestLinkgrabberOfflineDetection:
             patch(
                 "hylde.downloaders.jdownloader._linkgrabber_package_has_offline_links",
                 return_value=False,
-            ),
-            patch(
-                "hylde.downloaders.jdownloader._isolate_linkgrabber_package_directory"
             ),
             patch(
                 "hylde.downloaders.jdownloader._disable_archive_extraction_for_linkgrabber_packages",

@@ -228,53 +228,11 @@ def _jd_relative_to_output(path: object) -> PurePath:
     return jd_path(str(path)).relative_to(_jd_output_dir())
 
 
-def _jd_safe_relative_parts(path: object) -> tuple[str, ...]:
-    """Return safe relative parts from a JD-side path fragment."""
-    jd_path = _jd_path_class()
-    parsed_path = jd_path(str(path))
-    if parsed_path.is_absolute() or getattr(parsed_path, "drive", ""):
-        raise ValueError(f"Path fragment must be relative: {path!r}")
-
-    parts = tuple(part for part in parsed_path.parts if part not in ("", "."))
-    if any(part == ".." for part in parts):
-        raise ValueError(f"Path fragment must not contain parent references: {path!r}")
-    return parts
-
-
-def _jd_join_under_output(*relative_parts: object) -> str:
-    """Return a JD-side output path joined under JDownloader's output directory."""
-    output_dir = _jd_output_dir()
-    clean_parts = [
-        part
-        for relative_part in relative_parts
-        for part in _jd_safe_relative_parts(relative_part)
-    ]
-    return str(output_dir.joinpath(*clean_parts))
-
-
 def _external_path_for_jd_save_to(save_to: object) -> Path:
     """Map a JD-side save path to Hylde's mounted filesystem path."""
     relative_subpath = _jd_relative_to_output(save_to)
     return Path(settings.downloader.jdownloader.externaloutputdir).joinpath(
         *relative_subpath.parts
-    )
-
-
-def _isolate_linkgrabber_package_directory(package_id: int, package, url_key: str):
-    """Move a LinkGrabber package under this Hylde job while preserving JD subfolders."""
-    try:
-        original_subpath = _jd_relative_to_output(package.saveTo)
-    except ValueError:
-        original_subpath = _jd_path_class()(str(package_id))
-
-    destination = _jd_join_under_output(url_key, original_subpath)
-    lolg.debug(
-        f"Setting LinkGrabber package '{package_id}' destination to '{destination}'"
-    )
-    _call_pyjd(
-        JDD.linkgrabber.set_download_directory,
-        directory=destination,
-        package_ids=[package_id],
     )
 
 
@@ -374,11 +332,6 @@ def _wait_for_package_start_or_linkgrabber_failure(
                     if package_id not in moved_linkgrabber_package_ids
                 ]
                 if package_ids_to_move:
-                    for package_id in package_ids_to_move:
-                        _isolate_linkgrabber_package_directory(
-                            package_id, linkgrabber_packages[package_id], package_name
-                        )
-
                     extraction_error = (
                         _disable_archive_extraction_for_linkgrabber_packages(
                             package_ids_to_move
