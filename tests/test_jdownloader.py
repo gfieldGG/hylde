@@ -283,6 +283,48 @@ class TestLinkgrabberOfflineDetection:
         assert "missing.jpg" in failures[0]
         assert "missing file on disk" in failures[0]
 
+    def test_resolve_finished_packages_ignores_finished_mirror_without_file(
+        self, tmp_path
+    ):
+        package = SimpleNamespace(saveTo="/output/pkg")
+        good_path = tmp_path / "good.jpg"
+        good_path.write_text("ok")
+        good_link = SimpleNamespace(
+            name="good.jpg",
+            enabled=True,
+            skipped=None,
+            finished=True,
+            bytesLoaded=10,
+            bytesTotal=10,
+            status="Finished",
+            url="http://example.com/good",
+        )
+        mirror_link = SimpleNamespace(
+            name="duplicate.jpg",
+            enabled=True,
+            skipped=None,
+            finished=True,
+            bytesLoaded=0,
+            bytesTotal=10,
+            status="Finished(Mirror)",
+            url="http://example.com/duplicate",
+        )
+
+        with (
+            patch(
+                "hylde.downloaders.jdownloader._get_download_links_from_package",
+                return_value=[good_link, mirror_link],
+            ),
+            patch(
+                "hylde.downloaders.jdownloader._get_full_file_path",
+                side_effect=[good_path, None],
+            ),
+        ):
+            paths, failures = jdownloader._resolve_finished_packages({123: package})
+
+        assert paths == [good_path]
+        assert failures == []
+
     def test_resolve_finished_packages_reports_package_error_even_if_link_resolves(
         self, tmp_path
     ):

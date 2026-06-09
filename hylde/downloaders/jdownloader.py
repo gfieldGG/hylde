@@ -455,8 +455,17 @@ def _get_full_file_path(file_name: str, package: FilePackage) -> Path | None:
     return full_path
 
 
+def _is_finished_mirror_link(link) -> bool:
+    """Return True when JDownloader reports a satisfied mirror duplicate."""
+    status = str(getattr(link, "status", "") or "")
+    return link.finished is True and status.casefold() == "finished(mirror)"
+
+
 def _link_failure_reasons(link, file_path: Path | None) -> list[str]:
     """Return reasons a finished JDownloader link is not a usable downloaded file."""
+    if _is_finished_mirror_link(link):
+        return []
+
     reasons = []
 
     if link.enabled is False:
