@@ -6,8 +6,16 @@ from flask import Flask, request, send_file
 
 from hylde import lolg, settings
 from hylde.util import md5
-from hylde.result import CacheEntry, DownloadError, is_error_cache
+from hylde.result import (
+    CacheEntry,
+    DownloadError,
+    MultipartAccepted,
+    MultipartCompleted,
+    is_error_cache,
+    is_multipart_cache,
+)
 import hylde.wrapper as hydl
+from hylde import multipart
 
 
 # initialize flask app
@@ -55,6 +63,11 @@ def get_cached_file(url_key: str) -> CacheEntry | None:
             lolg.info(
                 f"Found failed cache entry for url '{url_key}': "
                 f"{file_name.get('message', 'Download failed.')}"
+            )
+        elif is_multipart_cache(file_name):
+            lolg.debug(
+                f"Found multipart cache entry for url '{url_key}': "
+                f"{file_name.get('group')}"
             )
         elif file_name:
             lolg.debug(f"Found cache entry '{url_key}' -> '{file_name}'")
@@ -120,6 +133,17 @@ def download_file(url, url_key):
             if isinstance(result, DownloadError):
                 lolg.info(f"Download failed for '{url_key}': {result.message}")
                 set_cached_file(url_key, result.to_cache())
+            elif isinstance(result, MultipartAccepted):
+                lolg.info(
+                    f"Multipart part accepted for '{url_key}' in group '{result.group}'"
+                )
+                set_cached_file(url_key, result.to_cache())
+            elif isinstance(result, MultipartCompleted):
+                lolg.info(
+                    f"Multipart archive completed for '{url_key}': {result.file_name}"
+                )
+                for completed_url_key in sorted(set(result.url_keys) | {url_key}):
+                    set_cached_file(completed_url_key, result.file_name)
             else:
                 set_cached_file(url_key, result)
         except Exception as e:  # noqa: E722
@@ -195,6 +219,36 @@ def handle_request():
         lolg.warning(f"Previous download failed for '{url_key}': {message}")
         remove_cached_file(url_key=url_key)
         return message, status_code
+
+    if is_multipart_cache(cached_filename):
+        group = cached_filename["group"]
+        final_path = multipart.get_final_cache_path(group)
+        if error := multipart.get_group_error(group):
+            lolg.warning(
+                f"Multipart group '{group}' failed for '{url_key}': {error.message}"
+            )
+            set_cached_file(url_key, error.to_cache())
+            return error.message, 503 if error.retryable else 500
+        elif final_path:
+            lolg.info(
+                f"Multipart group '{group}' completed; updating '{url_key}' -> "
+                f"'{final_path}'"
+            )
+            set_cached_file(url_key, final_path)
+            cached_filename = final_path
+        elif not multipart.has_group_state(group):
+            lolg.warning(
+                f"Multipart state missing for '{url_key}' in group '{group}'. "
+                "Clearing cache entry so it can be retried."
+            )
+            remove_cached_file(url_key=url_key)
+            return "Multipart state missing. Please try again.", 503
+        else:
+            lolg.info(
+                f"Multipart group '{group}' accepted for '{url_key}', but no "
+                "output is ready yet."
+            )
+            return "Downloaded archive part; continue with remaining parts.", 500
 
     # legacy retryable failure marker
     if cached_filename == "":

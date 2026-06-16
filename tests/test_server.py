@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from hylde import server
-from hylde.result import DownloadError
+from hylde.result import DownloadError, MultipartAccepted, MultipartCompleted
 
 
 class TestShimRoute:
@@ -172,6 +172,90 @@ class TestHandleRequest:
         assert resp.status_code == 200
         assert resp.data == b"image data"
 
+    def test_multipart_accepted_returns_message_500(self):
+        url = "http://example.com/archive.zip.001"
+
+        with (
+            patch(
+                "hylde.server.hydl.download_file",
+                return_value=MultipartAccepted("group123"),
+            ),
+            patch("hylde.server.multipart.has_group_state", return_value=True),
+        ):
+            with server.app.test_client() as client:
+                resp = client.get(f"/file?url={url}")
+
+        assert resp.status_code == 500
+        assert resp.data == b"Downloaded archive part; continue with remaining parts."
+
+    def test_cached_multipart_returns_message_500_until_complete(self):
+        url = "http://example.com/archive.zip.001"
+        url_key = server.get_url_key(url)
+        server.set_cached_file(url_key, {"multipart": True, "group": "group123"})
+
+        with (
+            patch("hylde.server.multipart.get_group_error", return_value=None),
+            patch("hylde.server.multipart.get_final_cache_path", return_value=None),
+            patch("hylde.server.multipart.has_group_state", return_value=True),
+        ):
+            with server.app.test_client() as client:
+                resp = client.get(f"/file?url={url}")
+
+        assert resp.status_code == 500
+        assert resp.data == b"Downloaded archive part; continue with remaining parts."
+
+    def test_cached_multipart_missing_state_clears_entry(self):
+        url = "http://example.com/archive.zip.001"
+        url_key = server.get_url_key(url)
+        server.set_cached_file(url_key, {"multipart": True, "group": "group123"})
+
+        with (
+            patch("hylde.server.multipart.get_final_cache_path", return_value=None),
+            patch("hylde.server.multipart.get_group_error", return_value=None),
+            patch("hylde.server.multipart.has_group_state", return_value=False),
+        ):
+            with server.app.test_client() as client:
+                resp = client.get(f"/file?url={url}")
+
+        assert resp.status_code == 503
+        assert resp.data == b"Multipart state missing. Please try again."
+        assert server.get_cached_file(url_key) is None
+
+    def test_cached_multipart_returns_group_error(self):
+        url = "http://example.com/archive.zip.001"
+        url_key = server.get_url_key(url)
+        server.set_cached_file(url_key, {"multipart": True, "group": "group123"})
+
+        with patch(
+            "hylde.server.multipart.get_group_error",
+            return_value=DownloadError("Archive is encrypted.", retryable=False),
+        ):
+            with server.app.test_client() as client:
+                resp = client.get(f"/file?url={url}")
+
+        assert resp.status_code == 500
+        assert resp.data == b"Archive is encrypted."
+
+    def test_cached_multipart_serves_completed_group(self, tmp_path):
+        url = "http://example.com/archive.zip.001"
+        url_key = server.get_url_key(url)
+        final_key = "final_key"
+        cached = tmp_path / final_key / "archive-output.bin"
+        cached.parent.mkdir(parents=True)
+        cached.write_text("done")
+        server.set_cached_file(url_key, {"multipart": True, "group": "group123"})
+
+        with patch(
+            "hylde.server.multipart.get_final_cache_path",
+            return_value=f"{final_key}/archive-output.bin",
+        ):
+            with server.app.test_client() as client:
+                resp = client.get(f"/file?url={url}")
+
+        assert resp.status_code == 200
+        assert resp.data == b"done"
+        assert server.get_cached_file(url_key) == f"{final_key}/archive-output.bin"
+
 
 class TestCacheHelpers:
     """Tests for shelve cache helpers."""
@@ -317,6 +401,42 @@ class TestDownloadFileHelper:
             server.download_file(url, url_key)
 
         assert server.get_cached_file(url_key) == f"{url_key}/file.txt"
+        assert url_key not in server.active_threads
+
+    def test_sets_multipart_cache_on_acceptance(self):
+        url = "http://example.com/archive.zip.001"
+        url_key = server.get_url_key(url)
+        server.active_threads[url_key] = MagicMock()
+
+        with patch(
+            "hylde.server.hydl.download_file",
+            return_value=MultipartAccepted("group123"),
+        ):
+            server.download_file(url, url_key)
+
+        assert server.get_cached_file(url_key) == {
+            "multipart": True,
+            "group": "group123",
+        }
+        assert url_key not in server.active_threads
+
+    def test_sets_all_multipart_cache_entries_on_completion(self):
+        url = "http://example.com/archive.zip.004"
+        url_key = server.get_url_key(url)
+        server.active_threads[url_key] = MagicMock()
+
+        with patch(
+            "hylde.server.hydl.download_file",
+            return_value=MultipartCompleted(
+                file_name="final/output.bin",
+                url_keys=["part1", "part2"],
+            ),
+        ):
+            server.download_file(url, url_key)
+
+        assert server.get_cached_file("part1") == "final/output.bin"
+        assert server.get_cached_file("part2") == "final/output.bin"
+        assert server.get_cached_file(url_key) == "final/output.bin"
         assert url_key not in server.active_threads
 
     def test_recovers_from_cache_directory(self, tmp_path):

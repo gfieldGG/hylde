@@ -1,5 +1,6 @@
 import sys
 import logging
+import shutil
 from loguru import logger as lolg
 from dynaconf import Dynaconf  # type:ignore
 
@@ -27,6 +28,19 @@ lolg.add(
     level=settings.loglevel,
 )
 lolg.info(f"Writing {settings.loglevel} log to: {settings.logfile}")
+
+
+def _multipart_enabled() -> bool:
+    multipart_settings = getattr(settings, "multipart", None)
+    if multipart_settings is None:
+        return False
+    return bool(getattr(multipart_settings, "enabled", False))
+
+
+if _multipart_enabled() and not any(
+    shutil.which(name) for name in ("7z", "7zz", "7za")
+):
+    raise RuntimeError("Multipart handling is enabled, but no 7z executable was found.")
 
 
 # bridge gallery-dl stdlib logging -> loguru

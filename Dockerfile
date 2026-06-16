@@ -37,6 +37,9 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /hylde
 
+RUN apt-get update && apt-get install -y --no-install-recommends 7zip && \
+    rm -rf /var/lib/apt/lists/*
+
 COPY --from=builder /hylde/.venv ./.venv
 COPY --from=builder /hylde/config.toml ./config.toml
 COPY --from=builder /hylde/hylde ./hylde

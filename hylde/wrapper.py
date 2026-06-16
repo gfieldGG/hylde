@@ -4,8 +4,14 @@ import zipfile
 from pathlib import Path
 
 from hylde import lolg, settings
+from hylde import multipart
 from hylde.registry import get_downloader_for_url
-from hylde.result import DownloadError, WrapperResult
+from hylde.result import (
+    DownloadError,
+    MultipartAccepted,
+    MultipartCompleted,
+    WrapperResult,
+)
 
 
 def _cache_dir() -> Path:
@@ -72,6 +78,34 @@ def download_file(url: str, url_key: str) -> WrapperResult:
 
     if not result:
         return DownloadError("Downloader returned no files.", retryable=False)
+
+    if len(result) == 1:
+        multipart_result = multipart.process_downloaded_file(url, url_key, result[0])
+        if isinstance(multipart_result, DownloadError | MultipartAccepted):
+            return multipart_result
+        if isinstance(multipart_result, multipart.MultipartAlreadyComplete):
+            lolg.info(
+                f"Multipart archive '{multipart_result.group}' already completed: "
+                f"{multipart_result.final_cache_path}"
+            )
+            return multipart_result.final_cache_path
+        if isinstance(multipart_result, multipart.MultipartExtractionReady):
+            try:
+                if len(multipart_result.files) == 1:
+                    file_name = _move_file_to_cache(
+                        _cache_dir(), multipart_result.files[0], url_key
+                    )
+                else:
+                    file_name = _zip_files_to_cache(
+                        _cache_dir(), multipart_result.files, url_key
+                    )
+            except Exception:
+                multipart.clear_finalizing(multipart_result.group)
+                shutil.rmtree(_cache_dir() / url_key, ignore_errors=True)
+                raise
+            url_keys = multipart.complete_group(multipart_result.group, file_name)
+            lolg.info(f"Moved multipart archive output to cache: {file_name}")
+            return MultipartCompleted(file_name=file_name, url_keys=url_keys)
 
     if len(result) == 1:
         file_name = _move_file_to_cache(_cache_dir(), result[0], url_key)

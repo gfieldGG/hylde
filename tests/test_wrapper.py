@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from hylde import wrapper
-from hylde.result import DownloadError
+from hylde.result import DownloadError, MultipartAccepted, MultipartCompleted
 
 
 class TestZipFilesToCache:
@@ -192,6 +192,96 @@ class TestDownloadFile:
 
         assert result == "key/key.zip"
         assert (tmp_path / "key" / "key.zip").exists()
+
+    def test_returns_multipart_accepted(self, tmp_path: Path):
+        src = tmp_path / "dl" / "archive.zip.001"
+        src.parent.mkdir(parents=True)
+        src.write_text("data")
+        mock_downloader = MagicMock()
+        mock_downloader.download_url.return_value = [src]
+        mock_downloader.__name__ = "MockDownloader"
+        accepted = MultipartAccepted("group123")
+
+        with (
+            patch("hylde.wrapper._cache_dir", return_value=tmp_path),
+            patch("hylde.wrapper.get_downloader_for_url", return_value=mock_downloader),
+            patch(
+                "hylde.wrapper.multipart.process_downloaded_file", return_value=accepted
+            ),
+        ):
+            result = wrapper.download_file("http://example.com/archive.zip.001", "key")
+
+        assert result == accepted
+
+    def test_moves_multipart_extraction_to_cache(self, tmp_path: Path):
+        src = tmp_path / "dl" / "archive.zip.002"
+        extracted = tmp_path / "extract" / "output.bin"
+        src.parent.mkdir(parents=True)
+        extracted.parent.mkdir(parents=True)
+        src.write_text("part")
+        extracted.write_text("output")
+        mock_downloader = MagicMock()
+        mock_downloader.download_url.return_value = [src]
+        mock_downloader.__name__ = "MockDownloader"
+        partial_cache_dir = tmp_path / "key"
+        partial_cache_dir.mkdir()
+        (partial_cache_dir / "partial.bin").write_text("partial")
+
+        with (
+            patch("hylde.wrapper._cache_dir", return_value=tmp_path),
+            patch("hylde.wrapper.get_downloader_for_url", return_value=mock_downloader),
+            patch(
+                "hylde.wrapper.multipart.process_downloaded_file",
+                return_value=wrapper.multipart.MultipartExtractionReady(
+                    group="group123", files=[extracted]
+                ),
+            ),
+            patch(
+                "hylde.wrapper.multipart.complete_group",
+                return_value=["urlkey1", "urlkey2"],
+            ) as complete_group,
+        ):
+            result = wrapper.download_file("http://example.com/archive.zip.002", "key")
+
+        assert result == MultipartCompleted(
+            file_name="key/output.bin", url_keys=["urlkey1", "urlkey2"]
+        )
+        assert (tmp_path / "key" / "output.bin").exists()
+        complete_group.assert_called_once_with("group123", "key/output.bin")
+
+    def test_clears_multipart_finalizing_when_cache_move_fails(self, tmp_path: Path):
+        src = tmp_path / "dl" / "archive.zip.002"
+        extracted = tmp_path / "extract" / "output.bin"
+        src.parent.mkdir(parents=True)
+        extracted.parent.mkdir(parents=True)
+        src.write_text("part")
+        extracted.write_text("output")
+        mock_downloader = MagicMock()
+        mock_downloader.download_url.return_value = [src]
+        mock_downloader.__name__ = "MockDownloader"
+        partial_cache_dir = tmp_path / "key"
+        partial_cache_dir.mkdir()
+        (partial_cache_dir / "partial.bin").write_text("partial")
+
+        with (
+            patch("hylde.wrapper._cache_dir", return_value=tmp_path),
+            patch("hylde.wrapper.get_downloader_for_url", return_value=mock_downloader),
+            patch(
+                "hylde.wrapper.multipart.process_downloaded_file",
+                return_value=wrapper.multipart.MultipartExtractionReady(
+                    group="group123", files=[extracted]
+                ),
+            ),
+            patch(
+                "hylde.wrapper._move_file_to_cache", side_effect=RuntimeError("boom")
+            ),
+            patch("hylde.wrapper.multipart.clear_finalizing") as clear_finalizing,
+        ):
+            with pytest.raises(RuntimeError, match="boom"):
+                wrapper.download_file("http://example.com/archive.zip.002", "key")
+
+        clear_finalizing.assert_called_once_with("group123")
+        assert not partial_cache_dir.exists()
 
     def test_downloader_called_with_url_and_key(self, tmp_path: Path):
         mock_downloader = MagicMock()
