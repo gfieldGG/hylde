@@ -11,7 +11,6 @@ enabled = true
 [registry]
 downloader_patterns = [
   ["https?://(?:www\\.)?jpg\\d+\\.\\w{2,8}/i(?:mg|mage)?/.", "gallerydl"],
-  ["https?://(?:www\\.)?bunkr+\\.\\w{2,8}/(?:f|d|i|v)/.", "gallerydl"],
   [".", "jdownloader"],
 ]
 
