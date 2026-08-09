@@ -1,6 +1,6 @@
 [project]
 name = "hylde"
-version = "0.12.1"
+version = "0.12.2"
 description = "An external hydrus downloader."
 authors = [{ name = "Your Name", email = "you@example.com" }]
 readme = "README.md"
