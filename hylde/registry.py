@@ -51,7 +51,7 @@ def load_downloader(name: str):
             raise
 
     if not callable(getattr(module, "download_url", None)):
-        raise ValueError(f"Downloader '{name}' does not define download_url().")
+        raise ValueError(f"Downloader '{name}' does not define download_url().")  # noqa: TRY004
 
     return module
 

@@ -535,3 +535,60 @@ class TestLinkgrabberOfflineDetection:
         assert result.retryable is False
         assert not partial_file.exists()
         remove.assert_called_once_with(123)
+
+
+class TestPackageQueryCap:
+    def _fake_jdd(self, packages):
+        fake_jdd = MagicMock()
+        fake_jdd.downloads.query_packages.return_value = packages
+        fake_jdd.linkgrabber.query_packages.return_value = packages
+        return fake_jdd
+
+    def test_downloader_query_finds_package_beyond_old_cap_of_100(self):
+        packages = [SimpleNamespace(uuid=i, name="other") for i in range(172)]
+        packages.append(SimpleNamespace(uuid=999, name="pkg"))
+        fake_jdd = self._fake_jdd(packages)
+
+        with patch("hylde.downloaders.jdownloader.JDD", fake_jdd, create=True):
+            result = jdownloader._get_downloader_packages("pkg")
+
+        assert list(result) == [999]
+        query = fake_jdd.downloads.query_packages.call_args.kwargs["query_params"]
+        assert query.maxResults == jdownloader.PACKAGE_QUERY_MAX_RESULTS
+
+    def test_linkgrabber_query_uses_package_cap(self):
+        fake_jdd = self._fake_jdd([SimpleNamespace(uuid=1, name="pkg")])
+
+        with patch("hylde.downloaders.jdownloader.JDD", fake_jdd, create=True):
+            result = jdownloader._get_linkgrabber_packages("pkg")
+
+        assert list(result) == [1]
+        query = fake_jdd.linkgrabber.query_packages.call_args.kwargs[
+            "crawled_package_query"
+        ]
+        assert query.maxResults == jdownloader.PACKAGE_QUERY_MAX_RESULTS
+
+    def test_warns_when_query_hits_cap(self):
+        packages = [SimpleNamespace(uuid=i, name="other") for i in range(3)]
+        fake_jdd = self._fake_jdd(packages)
+
+        with (
+            patch("hylde.downloaders.jdownloader.JDD", fake_jdd, create=True),
+            patch("hylde.downloaders.jdownloader.PACKAGE_QUERY_MAX_RESULTS", 3),
+            patch("hylde.downloaders.jdownloader.lolg") as lolg,
+        ):
+            jdownloader._get_downloader_packages("pkg")
+
+        lolg.warning.assert_called_once()
+        assert "Downloads" in lolg.warning.call_args.args[0]
+
+    def test_no_warning_below_cap(self):
+        fake_jdd = self._fake_jdd([SimpleNamespace(uuid=1, name="pkg")])
+
+        with (
+            patch("hylde.downloaders.jdownloader.JDD", fake_jdd, create=True),
+            patch("hylde.downloaders.jdownloader.lolg") as lolg,
+        ):
+            jdownloader._get_linkgrabber_packages("pkg")
+
+        lolg.warning.assert_not_called()

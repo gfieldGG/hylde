@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypeGuard, TypedDict, cast
+from typing import TypedDict, TypeGuard, cast
 
 
 class ErrorCache(TypedDict):

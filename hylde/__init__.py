@@ -1,8 +1,9 @@
-import sys
 import logging
 import shutil
-from loguru import logger as lolg
+import sys
+
 from dynaconf import Dynaconf  # type:ignore
+from loguru import logger as lolg
 
 # get settings
 settings = Dynaconf(
@@ -52,7 +53,7 @@ class _InterceptHandler(logging.Handler):
             lolg.opt(depth=6, exception=record.exc_info).log(
                 record.levelname, record.getMessage()
             )
-        except Exception:
+        except Exception:  # noqa: BLE001
             self.handleError(record)
 
 

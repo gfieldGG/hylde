@@ -3,8 +3,7 @@ import shutil
 import zipfile
 from pathlib import Path
 
-from hylde import lolg, settings
-from hylde import multipart
+from hylde import lolg, multipart, settings
 from hylde.registry import get_downloader_for_url
 from hylde.result import (
     DownloadError,
@@ -68,7 +67,7 @@ def download_file(url: str, url_key: str) -> WrapperResult:
 
     try:
         result = downloader.download_url(url, url_key)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         lolg.error(f"Unhandled error while downloading '{url}': {e}")
         return DownloadError(str(e), retryable=True)
 

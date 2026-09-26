@@ -3,9 +3,9 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import gallery_dl as gdl
 import pytest
 
-import gallery_dl as gdl
 from hylde.downloaders.gallerydl import (
     _IncompleteReadAdapter,
     download_url,

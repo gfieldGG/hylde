@@ -6,8 +6,7 @@ import gallery_dl as gdl  # type:ignore
 import gallery_dl.path  # type:ignore
 
 from hylde import lolg
-from hylde.result import DownloadError, DownloaderResult
-
+from hylde.result import DownloaderResult, DownloadError
 
 output_dir = Path(tempfile.gettempdir()) / "hylde" / "gallerydl"  # TODO expose setting
 

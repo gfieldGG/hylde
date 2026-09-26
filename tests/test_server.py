@@ -43,9 +43,11 @@ class TestHandleRequest:
         fake_thread = MagicMock()
         fake_thread.is_alive.return_value = True
 
-        with patch("hylde.server.threading.Thread", return_value=fake_thread):
-            with server.app.test_client() as client:
-                resp = client.get("/file?url=http://example.com/img.jpg")
+        with (
+            patch("hylde.server.threading.Thread", return_value=fake_thread),
+            server.app.test_client() as client,
+        ):
+            resp = client.get("/file?url=http://example.com/img.jpg")
 
         fake_thread.start.assert_called_once()
         fake_thread.join.assert_called_once()
@@ -181,9 +183,9 @@ class TestHandleRequest:
                 return_value=MultipartAccepted("group123"),
             ),
             patch("hylde.server.multipart.has_group_state", return_value=True),
+            server.app.test_client() as client,
         ):
-            with server.app.test_client() as client:
-                resp = client.get(f"/file?url={url}")
+            resp = client.get(f"/file?url={url}")
 
         assert resp.status_code == 500
         assert resp.data == b"Downloaded archive part; continue with remaining parts."
@@ -197,9 +199,9 @@ class TestHandleRequest:
             patch("hylde.server.multipart.get_group_error", return_value=None),
             patch("hylde.server.multipart.get_final_cache_path", return_value=None),
             patch("hylde.server.multipart.has_group_state", return_value=True),
+            server.app.test_client() as client,
         ):
-            with server.app.test_client() as client:
-                resp = client.get(f"/file?url={url}")
+            resp = client.get(f"/file?url={url}")
 
         assert resp.status_code == 500
         assert resp.data == b"Downloaded archive part; continue with remaining parts."
@@ -213,9 +215,9 @@ class TestHandleRequest:
             patch("hylde.server.multipart.get_final_cache_path", return_value=None),
             patch("hylde.server.multipart.get_group_error", return_value=None),
             patch("hylde.server.multipart.has_group_state", return_value=False),
+            server.app.test_client() as client,
         ):
-            with server.app.test_client() as client:
-                resp = client.get(f"/file?url={url}")
+            resp = client.get(f"/file?url={url}")
 
         assert resp.status_code == 503
         assert resp.data == b"Multipart state missing. Please try again."
@@ -226,12 +228,14 @@ class TestHandleRequest:
         url_key = server.get_url_key(url)
         server.set_cached_file(url_key, {"multipart": True, "group": "group123"})
 
-        with patch(
-            "hylde.server.multipart.get_group_error",
-            return_value=DownloadError("Archive is encrypted.", retryable=False),
+        with (
+            patch(
+                "hylde.server.multipart.get_group_error",
+                return_value=DownloadError("Archive is encrypted.", retryable=False),
+            ),
+            server.app.test_client() as client,
         ):
-            with server.app.test_client() as client:
-                resp = client.get(f"/file?url={url}")
+            resp = client.get(f"/file?url={url}")
 
         assert resp.status_code == 500
         assert resp.data == b"Archive is encrypted."
@@ -245,12 +249,14 @@ class TestHandleRequest:
         cached.write_text("done")
         server.set_cached_file(url_key, {"multipart": True, "group": "group123"})
 
-        with patch(
-            "hylde.server.multipart.get_final_cache_path",
-            return_value=f"{final_key}/archive-output.bin",
+        with (
+            patch(
+                "hylde.server.multipart.get_final_cache_path",
+                return_value=f"{final_key}/archive-output.bin",
+            ),
+            server.app.test_client() as client,
         ):
-            with server.app.test_client() as client:
-                resp = client.get(f"/file?url={url}")
+            resp = client.get(f"/file?url={url}")
 
         assert resp.status_code == 200
         assert resp.data == b"done"

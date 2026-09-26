@@ -45,16 +45,20 @@ class TestLoadDownloader:
         plugin = tmp_path / "plugin.py"
         plugin.write_text("VALUE = 1\n")
 
-        with patch.object(
-            registry, "_plugin_modules", return_value={"plugin": str(plugin)}
+        with (
+            patch.object(
+                registry, "_plugin_modules", return_value={"plugin": str(plugin)}
+            ),
+            pytest.raises(ValueError, match="download_url"),
         ):
-            with pytest.raises(ValueError, match="download_url"):
-                registry.load_downloader("plugin")
+            registry.load_downloader("plugin")
 
     def test_missing_downloader_raises_clear_error(self):
-        with patch.object(registry, "_plugin_modules", return_value={}):
-            with pytest.raises(ValueError, match="no plugin is configured"):
-                registry.load_downloader("missing")
+        with (
+            patch.object(registry, "_plugin_modules", return_value={}),
+            pytest.raises(ValueError, match="no plugin is configured"),
+        ):
+            registry.load_downloader("missing")
 
     def test_logs_configured_downloader_load_failure(self):
         with (
@@ -65,9 +69,9 @@ class TestLoadDownloader:
             ),
             patch.object(registry, "_plugin_modules", return_value={}),
             patch.object(registry.lolg, "critical") as critical,
+            pytest.raises(ValueError, match="no plugin is configured"),
         ):
-            with pytest.raises(ValueError, match="no plugin is configured"):
-                registry._build_downloader_patterns()
+            registry._build_downloader_patterns()
 
         critical.assert_called_once()
         assert "Failed to load downloader 'missing'" in critical.call_args.args[0]
@@ -114,9 +118,11 @@ class TestGetDownloaderForUrl:
         assert result is mock_mod
 
     def test_raises_when_no_match(self):
-        with patch.object(registry, "DOWNLOADER_PATTERNS", []):
-            with pytest.raises(ValueError, match="No downloader matched"):
-                registry.get_downloader_for_url("https://unknown.com")
+        with (
+            patch.object(registry, "DOWNLOADER_PATTERNS", []),
+            pytest.raises(ValueError, match="No downloader matched"),
+        ):
+            registry.get_downloader_for_url("https://unknown.com")
 
     def test_uses_regex_search_not_match(self):
         mock_mod = MagicMock()
@@ -169,14 +175,16 @@ class TestGetDownloaderForUrl:
     def test_no_match_does_not_call_module(self):
         mock_mod = MagicMock()
 
-        with patch.object(
-            registry,
-            "DOWNLOADER_PATTERNS",
-            [
-                (r"example\.com", mock_mod),
-            ],
+        with (
+            patch.object(
+                registry,
+                "DOWNLOADER_PATTERNS",
+                [
+                    (r"example\.com", mock_mod),
+                ],
+            ),
+            pytest.raises(ValueError),
         ):
-            with pytest.raises(ValueError):
-                registry.get_downloader_for_url("https://other.com")
+            registry.get_downloader_for_url("https://other.com")
 
         mock_mod.assert_not_called()

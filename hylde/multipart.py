@@ -15,7 +15,6 @@ from hylde import lolg, settings
 from hylde.result import DownloadError, MultipartAccepted
 from hylde.util import md5
 
-
 _ZIP_PART_RE = re.compile(r"^(?P<stem>.+\.zip)\.(?P<part>\d+)$", re.IGNORECASE)
 _RAR_PART_RE = re.compile(r"^(?P<prefix>.+)\.part(?P<part>\d+)\.rar$", re.IGNORECASE)
 _EXTRACTOR_CANDIDATES = ("7z", "7zz", "7za")

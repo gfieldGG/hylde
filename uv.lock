@@ -621,7 +621,7 @@ wheels = [
 
 [[package]]
 name = "hylde"
-version = "0.12.3"
+version = "0.12.4"
 source = { editable = "." }
 dependencies = [
     { name = "dynaconf" },

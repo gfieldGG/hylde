@@ -1,27 +1,30 @@
 import time
 from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
 
-from pyjd.myjd_connector import MyJDConnector, JDDevice  # type:ignore
 from pyjd.jd_types import (  # type:ignore
     AddLinksQuery,
-    PackageQuery,
-    FilePackage,
-    LinkQuery,
-    CrawledPackageQuery,
-    CrawledLinkQuery,
-    LinkCrawlerJobsQuery,
     AvailableLinkState,
+    CrawledLinkQuery,
+    CrawledPackageQuery,
     DeleteAction,
+    FilePackage,
+    LinkCrawlerJobsQuery,
+    LinkQuery,
     Mode,
+    PackageQuery,
     SelectionType,
 )
+from pyjd.myjd_connector import JDDevice, MyJDConnector  # type:ignore
 
 from hylde import lolg, settings
-from hylde.result import DownloadError, DownloaderResult
+from hylde.result import DownloaderResult, DownloadError
 
 JDD: JDDevice
 
 ERROR_MESSAGES = ("An Error occurred!", "File not found")
+
+# JD returns packages oldest first, so a too-low cap hides newly added packages.
+PACKAGE_QUERY_MAX_RESULTS = 1000
 
 
 if (
@@ -75,6 +78,15 @@ def connect() -> JDDevice | None:
     return JDD
 
 
+def _warn_if_package_query_truncated(packages: list, list_name: str):
+    """Warn when a package query hit the result cap and may be missing packages."""
+    if len(packages) >= PACKAGE_QUERY_MAX_RESULTS:
+        lolg.warning(
+            f"JDownloader {list_name} query returned {len(packages)} packages "
+            f"(cap {PACKAGE_QUERY_MAX_RESULTS}); newer packages may be invisible."
+        )
+
+
 def _get_downloader_packages(package_name: str) -> dict[int, FilePackage] | None:
     """Return Downloads-list packages matching Hylde's fixed package name."""
     packages = _call_pyjd(
@@ -84,9 +96,10 @@ def _get_downloader_packages(package_name: str) -> dict[int, FilePackage] | None
             finished=True,
             enabled=True,
             saveTo=True,
-            maxResults=100,
+            maxResults=PACKAGE_QUERY_MAX_RESULTS,
         ),
     )
+    _warn_if_package_query_truncated(packages, "Downloads")
 
     packages = {
         package.uuid: package for package in packages if package.name == package_name
@@ -110,9 +123,10 @@ def _get_linkgrabber_packages(package_name: str):
             childCount=True,
             saveTo=True,
             status=True,
-            maxResults=100,
+            maxResults=PACKAGE_QUERY_MAX_RESULTS,
         ),
     )
+    _warn_if_package_query_truncated(packages, "LinkGrabber")
     packages = {
         package.uuid: package for package in packages if package.name == package_name
     }
@@ -247,7 +261,7 @@ def _disable_archive_extraction_for_linkgrabber_packages(
             for link in _get_linkgrabber_links(package_id)
             if getattr(link, "uuid", None) is not None
         ]
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         lolg.error(f"Could not query JDownloader LinkGrabber links: {e}")
         return DownloadError("JDownloader archive settings failed.", retryable=True)
     if not link_ids:
@@ -259,7 +273,7 @@ def _disable_archive_extraction_for_linkgrabber_packages(
         archive_info = JDD.connection_helper.action(
             "/extraction/getArchiveInfo", [link_ids, package_ids]
         )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         lolg.error(f"Could not query JDownloader archive info: {e}")
         return DownloadError("JDownloader archive settings failed.", retryable=True)
 
@@ -279,7 +293,7 @@ def _disable_archive_extraction_for_linkgrabber_packages(
                 "/extraction/setArchiveSettings",
                 [archive_id, {"archiveId": archive_id, "autoExtract": False}],
             )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             lolg.error(f"Could not disable extraction for archive '{archive_id}': {e}")
             return DownloadError("JDownloader archive settings failed.", retryable=True)
 
@@ -377,7 +391,7 @@ def _wait_for_package_finish(
             return DownloadError("JDownloader download gone.", retryable=True)
 
         all_finished = True
-        for package_id, package in packages.items():
+        for package in packages.values():
             if not package.finished:
                 lolg.trace(
                     f"Package '{package_name}' not finished yet. Status: {package.status}"
@@ -542,7 +556,7 @@ def download_url(url: str, url_key: str) -> DownloaderResult:
     """Download URL via JDownloader and return paths or a user-facing error."""
     try:
         connect()
-    except Exception:
+    except Exception:  # noqa: BLE001
         return DownloadError("JDownloader connection failed.", retryable=True)
 
     package_name = url_key

@@ -276,9 +276,9 @@ class TestDownloadFile:
                 "hylde.wrapper._move_file_to_cache", side_effect=RuntimeError("boom")
             ),
             patch("hylde.wrapper.multipart.clear_finalizing") as clear_finalizing,
+            pytest.raises(RuntimeError, match="boom"),
         ):
-            with pytest.raises(RuntimeError, match="boom"):
-                wrapper.download_file("http://example.com/archive.zip.002", "key")
+            wrapper.download_file("http://example.com/archive.zip.002", "key")
 
         clear_finalizing.assert_called_once_with("group123")
         assert not partial_cache_dir.exists()

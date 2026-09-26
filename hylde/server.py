@@ -2,10 +2,11 @@ import os
 import shelve
 import threading
 from pathlib import Path
+
 from flask import Flask, request, send_file
 
-from hylde import lolg, settings
-from hylde.util import md5
+import hylde.wrapper as hydl
+from hylde import lolg, multipart, settings
 from hylde.result import (
     CacheEntry,
     DownloadError,
@@ -14,9 +15,7 @@ from hylde.result import (
     is_error_cache,
     is_multipart_cache,
 )
-import hylde.wrapper as hydl
-from hylde import multipart
-
+from hylde.util import md5
 
 # initialize flask app
 app = Flask(__name__)
@@ -146,7 +145,7 @@ def download_file(url, url_key):
                     set_cached_file(completed_url_key, result.file_name)
             else:
                 set_cached_file(url_key, result)
-        except Exception as e:  # noqa: E722
+        except Exception as e:  # noqa: BLE001
             lolg.error(f"Unhandled error while downloading '{url_key}': {e}'")
             set_cached_file(url_key, DownloadError(str(e), retryable=True).to_cache())
 
