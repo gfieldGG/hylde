@@ -26,6 +26,9 @@ ERROR_MESSAGES = ("An Error occurred!", "File not found")
 # JD returns packages oldest first, so a too-low cap hides newly added packages.
 PACKAGE_QUERY_MAX_RESULTS = 1000
 
+# pyjd calls that change JD state; retrying them may repeat the action.
+MUTATING_PYJD_CALLS = ("add_links", "cleanup", "move_to_downloadlist")
+
 
 if (
     settings.downloader.jdownloader.email == "TO BE SET"
@@ -36,14 +39,21 @@ if (
 
 def _call_pyjd(func, retries=3, delay=1, *args, **kwargs):
     """Wrap pyjd calls in retries because this is so nice to work with."""
+    name = getattr(func, "__qualname__", repr(func))
+    # pyjd returns None on request errors/timeouts, which surfaces as TypeError
+    log = (
+        lolg.warning
+        if getattr(func, "__name__", "") in MUTATING_PYJD_CALLS
+        else lolg.debug
+    )
     for attempt in range(retries):
         try:
             return func(*args, **kwargs)
         except TypeError as e:
-            lolg.trace(f"Attempt {attempt + 1} failed: {e}")
+            log(f"pyjd call '{name}' attempt {attempt + 1}/{retries} failed: {e}")
             if attempt < retries - 1:  # Don't wait after the last attempt
                 time.sleep(delay)
-    lolg.error(f"pyjd call failed after {retries} attempts")
+    lolg.error(f"pyjd call '{name}' failed after {retries} attempts")
     raise RuntimeError("pyjd call failed")
 
 
@@ -536,7 +546,8 @@ def _resolve_finished_packages(
             file_path = _get_full_file_path(link.name, package=package)
             reasons = _link_failure_reasons(link, file_path)
 
-            if file_path:
+            # duplicate packages or mirror links can resolve to the same file
+            if file_path and file_path not in full_file_paths:
                 lolg.trace(f"Found full file path '{file_path}'")
                 full_file_paths.append(file_path)
 

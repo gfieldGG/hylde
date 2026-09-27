@@ -283,6 +283,73 @@ class TestLinkgrabberOfflineDetection:
         assert "missing.jpg" in failures[0]
         assert "missing file on disk" in failures[0]
 
+    def test_resolve_finished_packages_dedupes_duplicate_packages_for_same_file(
+        self, tmp_path
+    ):
+        package = SimpleNamespace(saveTo="/output/pkg", status="Finished")
+        file_path = tmp_path / "video.mp4"
+        file_path.write_text("ok")
+        link = SimpleNamespace(
+            name="video.mp4",
+            enabled=True,
+            skipped=None,
+            finished=True,
+            bytesLoaded=10,
+            bytesTotal=10,
+            status="Finished",
+            url="http://example.com/video",
+        )
+
+        with (
+            patch(
+                "hylde.downloaders.jdownloader._get_download_links_from_package",
+                return_value=[link],
+            ),
+            patch(
+                "hylde.downloaders.jdownloader._get_full_file_path",
+                return_value=file_path,
+            ),
+        ):
+            paths, failures = jdownloader._resolve_finished_packages(
+                {123: package, 456: package}
+            )
+
+        assert paths == [file_path]
+        assert failures == []
+
+    def test_resolve_finished_packages_keeps_same_name_in_different_dirs(
+        self, tmp_path
+    ):
+        first = tmp_path / "a" / "img.jpg"
+        second = tmp_path / "b" / "img.jpg"
+        link = SimpleNamespace(
+            name="img.jpg",
+            enabled=True,
+            skipped=None,
+            finished=True,
+            bytesLoaded=10,
+            bytesTotal=10,
+            status="Finished",
+            url="http://example.com/img",
+        )
+
+        with (
+            patch(
+                "hylde.downloaders.jdownloader._get_download_links_from_package",
+                return_value=[link],
+            ),
+            patch(
+                "hylde.downloaders.jdownloader._get_full_file_path",
+                side_effect=[first, second],
+            ),
+        ):
+            paths, failures = jdownloader._resolve_finished_packages(
+                {123: SimpleNamespace(status=""), 456: SimpleNamespace(status="")}
+            )
+
+        assert paths == [first, second]
+        assert failures == []
+
     def test_resolve_finished_packages_ignores_finished_mirror_without_file(
         self, tmp_path
     ):
@@ -592,3 +659,60 @@ class TestPackageQueryCap:
             jdownloader._get_linkgrabber_packages("pkg")
 
         lolg.warning.assert_not_called()
+
+
+class TestCallPyjdRetryLogging:
+    @staticmethod
+    def _flaky(name, failures):
+        calls = []
+
+        def func():
+            calls.append(1)
+            if len(calls) <= failures:
+                raise TypeError("'NoneType' object is not a mapping")
+            return "ok"
+
+        func.__name__ = func.__qualname__ = name
+        return func
+
+    def test_query_retry_logs_debug_and_returns_result(self):
+        func = self._flaky("query_packages", failures=1)
+
+        with (
+            patch("hylde.downloaders.jdownloader.time.sleep"),
+            patch("hylde.downloaders.jdownloader.lolg") as lolg,
+        ):
+            assert jdownloader._call_pyjd(func) == "ok"
+
+        lolg.debug.assert_called_once()
+        assert "query_packages" in lolg.debug.call_args.args[0]
+        lolg.warning.assert_not_called()
+
+    def test_mutating_retry_logs_warning(self):
+        func = self._flaky("add_links", failures=1)
+
+        with (
+            patch("hylde.downloaders.jdownloader.time.sleep"),
+            patch("hylde.downloaders.jdownloader.lolg") as lolg,
+        ):
+            assert jdownloader._call_pyjd(func) == "ok"
+
+        lolg.warning.assert_called_once()
+        assert "add_links" in lolg.warning.call_args.args[0]
+
+    def test_exhausted_retries_log_error_with_call_name(self):
+        func = self._flaky("cleanup", failures=3)
+
+        with (
+            patch("hylde.downloaders.jdownloader.time.sleep"),
+            patch("hylde.downloaders.jdownloader.lolg") as lolg,
+        ):
+            try:
+                jdownloader._call_pyjd(func)
+            except RuntimeError as e:
+                assert str(e) == "pyjd call failed"
+            else:
+                raise AssertionError("Expected RuntimeError")
+
+        assert lolg.warning.call_count == 3
+        assert "cleanup" in lolg.error.call_args.args[0]
