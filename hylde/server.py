@@ -3,10 +3,11 @@ import shelve
 import threading
 from pathlib import Path
 
-from flask import Flask, request, send_file
+import requests
+from flask import Flask, Response, request, send_file
 
 import hylde.wrapper as hydl
-from hylde import lolg, multipart, settings
+from hylde import lolg, multipart, post, settings
 from hylde.result import (
     CacheEntry,
     DownloadError,
@@ -280,6 +281,28 @@ def handle_request():
     # serve the file
     lolg.success(f"Serving file '{cached_file}' for '{url}'...")
     return send_file(cached_file)
+
+
+@app.route("/post", methods=["GET"])
+def handle_post():
+    """Forward a GET request as a POST upstream and pass the response through."""
+    try:
+        upstream = post.parse_request(request.args)
+    except post.PostRequestError as e:
+        lolg.error(f"Invalid /post request: {e}")
+        return str(e), 400
+
+    try:
+        resp = post.send(upstream)
+    except requests.RequestException as e:
+        lolg.error(f"POST to '{upstream.url}' failed: {e}")
+        return f"Upstream request failed: {e}", 502
+
+    return Response(
+        resp.content,
+        status=resp.status_code,
+        content_type=resp.content_type or "application/octet-stream",
+    )
 
 
 @app.route("/shim")

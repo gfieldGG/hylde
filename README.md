@@ -17,3 +17,49 @@ Supported multipart parts currently include `*.zip.<number>` and
 `*.part<number>.rar`. Incomplete-but-downloaded parts return HTTP 500 with
 `Downloaded archive part; continue with remaining parts.` so Hydrus displays a
 clear error message.
+
+## POST pass-through
+
+Hydrus parsers can only issue GET requests. `GET /post` forwards a request as
+a POST (e.g. to a GraphQL API) and passes the upstream status, body and
+`Content-Type` through unchanged.
+
+| Parameter        | Description                                                        |
+| ---------------- | ------------------------------------------------------------------ |
+| `url`            | Upstream URL (required, http/https).                               |
+| `body`           | Request body, base64url (Hydrus "base64url"; padding optional).    |
+| `content_type`   | Request `Content-Type`, default `application/json`.                |
+| `headers`        | Extra request headers as a base64url JSON object of strings.       |
+| `var_<name>`     | Sets GraphQL variable `<name>` to the string value.                |
+| `varjson_<name>` | Sets GraphQL variable `<name>` to the JSON-parsed value (`2`, …).  |
+
+`var_*`/`varjson_*` are for GraphQL: they merge into the top-level `variables`
+object of a JSON body, overriding existing keys.
+
+Malformed requests return `400`, upstream connection errors or timeouts
+(`maxtimeout`) return `502`. Standard base64 is also accepted.
+Like all query parameters, `headers` (e.g. auth tokens) appears in access logs.
+
+Example: a GraphQL query with an auth header and the `id` supplied per request.
+
+```sh
+# body: the query, with $id left as a variable
+echo -n '{"query":"query($id:ID!){item(id:$id){title tags{name}}}"}' | base64 -w0
+# eyJxdWVyeSI6InF1ZXJ5KCRpZDpJRCEpe2l0ZW0oaWQ6JGlkKXt0aXRsZSB0YWdze25hbWV9fX0ifQ==
+
+# headers: JSON object of extra request headers
+echo -n '{"Authorization":"Bearer TOKEN"}' | base64 -w0
+# eyJBdXRob3JpemF0aW9uIjoiQmVhcmVyIFRPS0VOIn0=
+```
+
+```
+http://localhost:5000/post?url=https://api.example.com/graphql
+  &body=eyJxdWVyeSI6InF1ZXJ5KCRpZDpJRCEpe2l0ZW0oaWQ6JGlkKXt0aXRsZSB0YWdze25hbWV9fX0ifQ==
+  &headers=eyJBdXRob3JpemF0aW9uIjoiQmVhcmVyIFRPS0VOIn0=
+  &var_id=123
+```
+
+(Line breaks for readability only.) hylde POSTs
+`{"query":"…","variables":{"id":"123"}}` with `Authorization: Bearer TOKEN`.
+In Hydrus, prefer the string converter's "base64url" encoding, which is
+URL-safe.
