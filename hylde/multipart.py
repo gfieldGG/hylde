@@ -177,20 +177,41 @@ class MultipartJob:
         shutil.rmtree(self.root, ignore_errors=True)
         _clear_finalizing(self.group)
 
-    def has_state(self) -> bool:
+    def prune_missing_parts(self, metadata: dict[str, Any]) -> list[str]:
+        """Drop parts whose files vanished (e.g. cache cleanup); keep the rest."""
+        parts = metadata.get("parts", {})
+        missing = [
+            number
+            for number, part in parts.items()
+            if not (self.parts_dir / str(part.get("filename", ""))).is_file()
+        ]
+        for number in missing:
+            lolg.warning(
+                f"Multipart part {number} of '{self.group}' is missing on disk; "
+                "dropping it so it can be downloaded again."
+            )
+            del parts[number]
+        return missing
+
+    def has_url_key(self, url_key: str) -> bool:
+        """Return whether url_key is backed by a stored part of this group."""
         if not self.metadata_file.exists():
             return False
         metadata = self.load()
-        for part in metadata.get("parts", {}).values():
-            filename = part.get("filename")
-            if isinstance(filename, str) and not (self.parts_dir / filename).exists():
+        if self.prune_missing_parts(metadata):
+            if any(
+                metadata.get(key)
+                for key in ("parts", "late_url_keys", "final_cache_path", "error")
+            ):
+                self.save(metadata)
+            else:
                 self.reset()
                 return False
-        return bool(
-            metadata.get("parts")
-            or metadata.get("late_url_keys")
-            or metadata.get("final_cache_path")
-            or metadata.get("error")
+        if url_key in metadata.get("late_url_keys", []) and _is_finalizing(self.group):
+            return True
+        return any(
+            url_key in part.get("url_keys", [])
+            for part in metadata.get("parts", {}).values()
         )
 
     def final_path(self) -> str | None:
@@ -308,7 +329,9 @@ class MultipartJob:
                 )
             return MultipartExtractionReady(group=self.group, files=files)
 
-        lolg.debug(f"Multipart extraction failed for '{self.group}': {output.strip()}")
+        lolg.warning(
+            f"Multipart extraction failed for '{self.group}': {output.strip()}"
+        )
         shutil.rmtree(self.extract_dir, ignore_errors=True)
         if _looks_permanent(output) and not _looks_incomplete(output):
             return DownloadError(
@@ -331,6 +354,8 @@ class MultipartJob:
                 return MultipartAlreadyComplete(self.group, final_path)
             self.reset()
             metadata = self.load()
+
+        self.prune_missing_parts(metadata)
 
         if _is_finalizing(self.group):
             self.record_late_url_key(metadata, url_key)
@@ -387,10 +412,10 @@ def get_group_error(group: str) -> DownloadError | None:
         return MultipartJob(group).error()
 
 
-def has_group_state(group: str) -> bool:
-    """Return whether a multipart cache entry still has backing group state."""
+def has_url_key(group: str, url_key: str) -> bool:
+    """Return whether a multipart cache entry is still backed by a stored part."""
     with _lock_for_group(group):
-        return MultipartJob(group).has_state()
+        return MultipartJob(group).has_url_key(url_key)
 
 
 def _save_metadata(group: str, metadata: dict[str, Any]):

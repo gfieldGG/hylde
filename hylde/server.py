@@ -236,10 +236,10 @@ def handle_request():
             )
             set_cached_file(url_key, final_path)
             cached_filename = final_path
-        elif not multipart.has_group_state(group):
+        elif not multipart.has_url_key(group, url_key):
             lolg.warning(
-                f"Multipart state missing for '{url_key}' in group '{group}'. "
-                "Clearing cache entry so it can be retried."
+                f"Multipart part for '{url_key}' is missing from group '{group}'. "
+                "Clearing cache entry so it can be downloaded again."
             )
             remove_cached_file(url_key=url_key)
             return "Multipart state missing. Please try again.", 503

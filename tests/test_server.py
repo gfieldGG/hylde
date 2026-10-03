@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from hylde import server
+from hylde import multipart, server
 from hylde.result import DownloadError, MultipartAccepted, MultipartCompleted
 
 
@@ -182,7 +182,7 @@ class TestHandleRequest:
                 "hylde.server.hydl.download_file",
                 return_value=MultipartAccepted("group123"),
             ),
-            patch("hylde.server.multipart.has_group_state", return_value=True),
+            patch("hylde.server.multipart.has_url_key", return_value=True),
             server.app.test_client() as client,
         ):
             resp = client.get(f"/file?url={url}")
@@ -198,7 +198,7 @@ class TestHandleRequest:
         with (
             patch("hylde.server.multipart.get_group_error", return_value=None),
             patch("hylde.server.multipart.get_final_cache_path", return_value=None),
-            patch("hylde.server.multipart.has_group_state", return_value=True),
+            patch("hylde.server.multipart.has_url_key", return_value=True),
             server.app.test_client() as client,
         ):
             resp = client.get(f"/file?url={url}")
@@ -214,7 +214,7 @@ class TestHandleRequest:
         with (
             patch("hylde.server.multipart.get_final_cache_path", return_value=None),
             patch("hylde.server.multipart.get_group_error", return_value=None),
-            patch("hylde.server.multipart.has_group_state", return_value=False),
+            patch("hylde.server.multipart.has_url_key", return_value=False),
             server.app.test_client() as client,
         ):
             resp = client.get(f"/file?url={url}")
@@ -222,6 +222,35 @@ class TestHandleRequest:
         assert resp.status_code == 503
         assert resp.data == b"Multipart state missing. Please try again."
         assert server.get_cached_file(url_key) is None
+
+    def test_cached_multipart_part_absent_from_group_clears_entry(self, tmp_path):
+        # Part 1's file and group metadata were deleted by a cache cleanup, then
+        # parts 2 and 3 recreated the group; part 1's cache entry must not stick.
+        url = "http://example.com/archive.zip.001"
+        url_key = server.get_url_key(url)
+        group = "group123"
+        parts_dir = tmp_path / "_multipart" / group / "parts"
+        parts_dir.mkdir(parents=True)
+        parts = {}
+        for number in (2, 3):
+            filename = f"archive.zip.{number:03d}"
+            (parts_dir / filename).write_text("part")
+            parts[str(number)] = {
+                "filename": filename,
+                "size": 4,
+                "url_keys": [f"urlkey{number}"],
+            }
+        server.set_cached_file(url_key, {"multipart": True, "group": group})
+
+        with patch("hylde.multipart._cache_dir", return_value=tmp_path):
+            multipart._save_metadata(group, {"group": group, "parts": parts})
+            with server.app.test_client() as client:
+                resp = client.get(f"/file?url={url}")
+
+        assert resp.status_code == 503
+        assert server.get_cached_file(url_key) is None
+        assert (parts_dir / "archive.zip.002").exists()
+        assert (parts_dir / "archive.zip.003").exists()
 
     def test_cached_multipart_returns_group_error(self):
         url = "http://example.com/archive.zip.001"

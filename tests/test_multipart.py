@@ -208,26 +208,108 @@ def test_missing_completed_output_clears_tombstone_for_rebuild(tmp_path: Path):
     assert not replacement.exists()
 
 
-def test_missing_recorded_part_file_clears_group_state(tmp_path: Path):
+def _save_parts(cache_dir: Path, group: str, stored: dict[int, str], missing=()):
+    """Write group metadata for parts; only `stored` parts get files on disk."""
+    parts_dir = cache_dir / "_multipart" / group / "parts"
+    parts_dir.mkdir(parents=True, exist_ok=True)
+    parts = {}
+    for number, url_key in {**stored, **dict(missing)}.items():
+        filename = f"archive.zip.{number:03d}"
+        if number in stored:
+            (parts_dir / filename).write_text("part")
+        parts[str(number)] = {"filename": filename, "size": 4, "url_keys": [url_key]}
+    multipart._save_metadata(group, {"group": group, "parts": parts})
+
+
+def test_missing_only_part_file_clears_group_state(tmp_path: Path):
+    cache_dir = tmp_path / "cache"
+    group = "group"
+    with patch("hylde.multipart._cache_dir", return_value=cache_dir):
+        _save_parts(cache_dir, group, stored={}, missing=[(1, "urlkey")])
+
+        assert multipart.has_url_key(group, "urlkey") is False
+        assert not (cache_dir / "_multipart" / group).exists()
+
+
+def test_missing_part_file_is_pruned_and_other_parts_kept(tmp_path: Path):
+    cache_dir = tmp_path / "cache"
+    group = "group"
+    with patch("hylde.multipart._cache_dir", return_value=cache_dir):
+        _save_parts(
+            cache_dir, group, stored={2: "urlkey2", 3: "urlkey3"}, missing=[(1, "k1")]
+        )
+
+        assert multipart.has_url_key(group, "k1") is False
+        assert multipart.has_url_key(group, "urlkey2") is True
+        assert multipart.has_url_key(group, "urlkey3") is True
+        metadata = multipart.MultipartJob(group).load()
+
+    assert sorted(metadata["parts"]) == ["2", "3"]
+    assert (cache_dir / "_multipart" / group / "parts" / "archive.zip.002").exists()
+
+
+def test_url_key_not_stored_in_group_is_not_backed(tmp_path: Path):
+    # Cache entry survived while the group was recreated without its part.
+    cache_dir = tmp_path / "cache"
+    group = "group"
+    with patch("hylde.multipart._cache_dir", return_value=cache_dir):
+        _save_parts(cache_dir, group, stored={2: "urlkey2", 3: "urlkey3"})
+
+        assert multipart.has_url_key(group, "urlkey1") is False
+        assert multipart.has_url_key(group, "urlkey2") is True
+
+
+def test_late_url_key_is_backed_only_while_finalizing(tmp_path: Path):
     cache_dir = tmp_path / "cache"
     group = "group"
     with patch("hylde.multipart._cache_dir", return_value=cache_dir):
         multipart._save_metadata(
-            group,
-            {
-                "group": group,
-                "parts": {
-                    "1": {
-                        "filename": "archive.zip.001",
-                        "size": 1,
-                        "url_keys": ["urlkey"],
-                    }
-                },
-            },
+            group, {"group": group, "parts": {}, "late_url_keys": ["late"]}
         )
 
-        assert multipart.has_group_state(group) is False
-        assert not (cache_dir / "_multipart" / group).exists()
+        assert multipart.has_url_key(group, "late") is False
+        multipart._set_finalizing(group)
+        try:
+            assert multipart.has_url_key(group, "late") is True
+        finally:
+            multipart._clear_finalizing(group)
+
+
+def test_redownloaded_part_replaces_pruned_part_and_extracts(tmp_path: Path):
+    cache_dir = tmp_path / "cache"
+    first_part = tmp_path / "Archive.zip.001"
+    first_part.write_text("part")
+    part = multipart.detect_archive_part(first_part, "https://example.com/f/one")
+    assert part is not None
+
+    with (
+        patch("hylde.multipart._cache_dir", return_value=cache_dir),
+        patch(
+            "hylde.multipart._attempt_extraction",
+            return_value=MultipartAccepted(part.group),
+        ) as extract,
+    ):
+        # part 1 recorded but its file was deleted; parts 2 and 3 are on disk
+        _save_parts(
+            cache_dir,
+            part.group,
+            stored={2: "urlkey2", 3: "urlkey3"},
+            missing=[(1, "stale")],
+        )
+        result = multipart.process_downloaded_file(
+            "https://example.com/f/one", "urlkey1", first_part
+        )
+        metadata = multipart.MultipartJob(part.group).load()
+
+    assert isinstance(result, MultipartAccepted)
+    assert metadata["parts"]["1"]["url_keys"] == ["urlkey1"]
+    extract.assert_called_once()
+    part_paths = extract.call_args.args[1]
+    assert [path.name for path in part_paths] == [
+        "Archive.zip.001",
+        "archive.zip.002",
+        "archive.zip.003",
+    ]
 
 
 def test_permanent_extraction_error_is_persisted_for_group(tmp_path: Path):
