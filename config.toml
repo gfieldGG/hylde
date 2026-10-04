@@ -8,6 +8,10 @@ loglevel = "INFO"
 [multipart]
 enabled = true
 
+[render]
+url = "http://trawl:8191"   # trawl instance used by /render
+timeout = 20                # seconds trawl may spend per page; challenge solves can still take ~40s
+
 [registry]
 downloader_patterns = [
   ["https?://(?:www\\.)?jpg\\d+\\.\\w{2,8}/i(?:mg|mage)?/.", "gallerydl"],

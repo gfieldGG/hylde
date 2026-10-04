@@ -7,7 +7,7 @@ import requests
 from flask import Flask, Response, request, send_file
 
 import hylde.wrapper as hydl
-from hylde import lolg, multipart, post, settings
+from hylde import lolg, multipart, post, render, settings
 from hylde.result import (
     CacheEntry,
     DownloadError,
@@ -302,6 +302,39 @@ def handle_post():
         resp.content,
         status=resp.status_code,
         content_type=resp.content_type or "application/octet-stream",
+    )
+
+
+@app.route("/render", methods=["GET"])
+@app.route("/render/<site>", methods=["GET"])
+def handle_render(site: str | None = None):
+    """Return a page's HTML after JavaScript ran, rendered by trawl.
+
+    The optional path segment only lets Hydrus link a separate URL class and
+    parser per site.
+    """
+    try:
+        url = render.parse_url(request.args)
+    except render.RenderRequestError as e:
+        lolg.error(f"Invalid /render request: {e}")
+        return str(e), 400
+
+    if site:
+        lolg.info(f"Render request for site '{site}'")
+    try:
+        page = render.render(url)
+    except render.RenderFailedError as e:
+        lolg.error(f"Rendering '{url}' failed: {e}")
+        return str(e), e.status_code
+    except requests.Timeout as e:
+        lolg.error(f"Rendering '{url}' timed out: {e}")
+        return f"Render request timed out: {e}", 504
+    except requests.RequestException as e:
+        lolg.error(f"Rendering '{url}' failed: {e}")
+        return f"Render request failed: {e}", 502
+
+    return Response(
+        page.html, status=page.status_code, content_type=render.CONTENT_TYPE
     )
 
 

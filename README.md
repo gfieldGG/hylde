@@ -63,3 +63,30 @@ http://localhost:5000/post?url=https://api.example.com/graphql
 `{"query":"…","variables":{"id":"123"}}` with `Authorization: Bearer TOKEN`.
 In Hydrus, prefer the string converter's "base64url" encoding, which is
 URL-safe.
+
+## Rendered pages
+
+Hydrus parsers cannot run JavaScript. `GET /render?url=<page url>` returns a
+page's HTML after JavaScript ran, rendered in a browser by a
+[trawl](https://github.com/germondai/trawl) instance, which also solves
+Cloudflare and similar challenges. The target's status code is passed through
+with `Content-Type: text/html; charset=utf-8`; nothing is cached.
+
+```toml
+[render]
+url = "http://trawl:8191"   # trawl instance
+timeout = 20                # seconds trawl may spend per page
+```
+
+trawl's challenge handling waits at least 30 seconds, so a page with a
+challenge or captcha widget can take ~40 seconds regardless of `timeout`; keep
+`maxtimeout` above that. Missing or non-http(s) `url` returns `400`, a busy
+trawl returns `429`, trawl failures and connection errors return `502`, and a
+`maxtimeout` timeout returns `504`.
+
+Hydrus links one parser per URL class, so give each site its own path:
+`/render/<site>?url=…` behaves like `/render` and the `<site>` segment only
+separates URL classes. In the site's URL class, set the API/redirect URL
+converter to percent-encode the URL and prepend
+`http://hylde:5000/render/<site>?url=`, then link the site's HTML parser to a
+URL class matching that hylde URL.
