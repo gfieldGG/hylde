@@ -72,6 +72,10 @@ page's HTML after JavaScript ran, rendered in a browser by a
 Cloudflare and similar challenges. The target's status code is passed through
 with `Content-Type: text/html; charset=utf-8`; nothing is cached.
 
+Relative links (`href`, `src`, `srcset`, …) are made absolute against the
+page's final URL, since Hydrus would resolve them against hylde's base url.
+Paths inside scripts or JSON are not rewritten.
+
 ```toml
 [render]
 url = "http://trawl:8191"   # trawl instance

@@ -1,6 +1,6 @@
 [project]
 name = "hylde"
-version = "0.14.0"
+version = "0.14.1"
 description = "An external hydrus downloader."
 authors = [{ name = "Your Name", email = "you@example.com" }]
 readme = "README.md"
@@ -12,6 +12,7 @@ dependencies = [
     "pyjd>=1.0.13,<2.0.0",
     "dynaconf>=3.2.10,<4.0.0",
     "gallery-dl @ git+https://codeberg.org/mikf/gallery-dl.git@master",
+    "lxml>=6.0.0,<7.0.0",
 ]
 
 [dependency-groups]
