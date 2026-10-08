@@ -11,7 +11,7 @@ from lxml import html as lxml_html
 
 from hylde import lolg, settings
 
-CONTENT_TYPE = "text/html; charset=utf-8"
+HTML_CONTENT_TYPE = "text/html; charset=utf-8"
 
 _DOCTYPE = re.compile(r"\s*<!doctype", re.IGNORECASE)
 _SRCSET_URL = re.compile(r"[\s,]*(\S+)")
@@ -32,7 +32,8 @@ class RenderFailedError(Exception):
 @dataclass(frozen=True)
 class RenderResponse:
     status_code: int
-    html: str
+    content: str | bytes
+    content_type: str
 
 
 def parse_url(args: Mapping[str, str]) -> str:
@@ -53,6 +54,21 @@ def _error_message(resp: requests.Response) -> str:
     if isinstance(payload, dict):
         return str(payload.get("error") or payload.get("message") or payload)
     return str(payload)
+
+
+def _is_html(content_type: str) -> bool:
+    media_type = content_type.split(";", 1)[0].strip().lower()
+    return media_type in ("text/html", "application/xhtml+xml")
+
+
+def _raw_body(body: object) -> bytes | None:
+    """Decode trawl's raw response body, serialized as {"type": "Buffer", "data": [...]}."""
+    if not isinstance(body, dict) or body.get("type") != "Buffer":
+        return None
+    try:
+        return bytes(body["data"])
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def _is_relative(url: str) -> bool:
@@ -135,6 +151,26 @@ def absolutize_links(page: str, base_url: str) -> str:
     return lxml_html.tostring(doc, encoding="unicode", doctype=doctype)
 
 
+def _response_content(result: dict, url: str) -> tuple[str | bytes, str]:
+    """Pick the content to return and its Content-Type from a trawl result.
+
+    HTML is the rendered DOM with absolute links. Anything else (JSON, plain
+    text, binaries) is the raw response body, since trawl 1.7.0 puts the
+    browser's viewer page in `html`; later versions put the raw text there,
+    which is the fallback.
+    """
+    content_type = result.get("contentType") or HTML_CONTENT_TYPE
+    html = result.get("html", "")
+    if _is_html(content_type):
+        return absolutize_links(html, result.get("url") or url), HTML_CONTENT_TYPE
+
+    raw = _raw_body(result.get("body"))
+    if raw is not None:
+        return raw, content_type
+    media_type = content_type.split(";", 1)[0].strip()
+    return html, f"{media_type}; charset=utf-8"
+
+
 def render(url: str) -> RenderResponse:
     """Render a page through trawl's /scrape, always using a browser.
 
@@ -157,11 +193,13 @@ def render(url: str) -> RenderResponse:
         raise RenderFailedError(message, status)
 
     result = resp.json()
+    content, content_type = _response_content(result, url)
     lolg.info(
-        f"Rendered '{url}': status {result.get('statusCode')}, tier "
-        f"{result.get('tier')}, {result.get('totalMs')} ms"
+        f"Rendered '{url}': status {result.get('statusCode')}, {content_type}, "
+        f"tier {result.get('tier')}, {result.get('totalMs')} ms"
     )
     return RenderResponse(
         status_code=int(result.get("statusCode") or 200),
-        html=absolutize_links(result.get("html", ""), result.get("url") or url),
+        content=content,
+        content_type=content_type,
     )

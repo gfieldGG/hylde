@@ -110,6 +110,28 @@ class TestAbsolutizeLinks:
         assert render.absolutize_links(page, PAGE) == page
 
 
+class TestRawBody:
+    def test_buffer(self):
+        assert render._raw_body({"type": "Buffer", "data": [104, 105]}) == b"hi"
+
+    def test_empty_buffer(self):
+        assert render._raw_body({"type": "Buffer", "data": []}) == b""
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            None,
+            "aGk=",
+            {"data": [104, 105]},
+            {"type": "Buffer"},
+            {"type": "Buffer", "data": "hi"},
+            {"type": "Buffer", "data": [256]},
+        ],
+    )
+    def test_unrecognized_returns_none(self, body):
+        assert render._raw_body(body) is None
+
+
 class TestSrcsetCandidates:
     @pytest.mark.parametrize(
         ("srcset", "expected"),
@@ -173,6 +195,67 @@ class TestRenderRoute:
         with patch("hylde.render.requests.post", return_value=upstream):
             resp = self.get(url=PAGE)
         assert b'href="https://example.com/moved/next"' in resp.data
+
+    def test_html_content_type_is_normalized_to_utf8(self):
+        upstream = trawl_response(
+            200,
+            {
+                "html": body("Größe"),
+                "statusCode": 200,
+                "contentType": "text/html; charset=iso-8859-1",
+            },
+        )
+        with patch("hylde.render.requests.post", return_value=upstream):
+            resp = self.get(url=PAGE)
+        assert resp.content_type == "text/html; charset=utf-8"
+        assert "Größe" in resp.data.decode()
+
+    def test_non_html_returns_raw_body(self):
+        raw = b'{"data":{"url":"/download/1"}}'
+        upstream = trawl_response(
+            200,
+            {
+                "html": "<html><body><pre>viewer shell</pre></body></html>",
+                "statusCode": 200,
+                "contentType": "application/json; charset=utf-8",
+                "body": {"type": "Buffer", "data": list(raw)},
+            },
+        )
+        with patch("hylde.render.requests.post", return_value=upstream):
+            resp = self.get(url=PAGE)
+        assert resp.status_code == 200
+        assert resp.data == raw
+        assert resp.content_type == "application/json; charset=utf-8"
+
+    def test_binary_body_passed_through(self):
+        raw = bytes([0x89, 0x50, 0x4E, 0x47, 0x00, 0xFF])
+        upstream = trawl_response(
+            200,
+            {
+                "html": "",
+                "statusCode": 200,
+                "contentType": "image/png",
+                "body": {"type": "Buffer", "data": list(raw)},
+            },
+        )
+        with patch("hylde.render.requests.post", return_value=upstream):
+            resp = self.get(url=PAGE)
+        assert resp.data == raw
+        assert resp.content_type == "image/png"
+
+    def test_non_html_without_body_falls_back_to_html_field(self):
+        upstream = trawl_response(
+            200,
+            {
+                "html": '{"a": "Größe"}',
+                "statusCode": 200,
+                "contentType": "application/json; charset=iso-8859-1",
+            },
+        )
+        with patch("hylde.render.requests.post", return_value=upstream):
+            resp = self.get(url=PAGE)
+        assert resp.data.decode() == '{"a": "Größe"}'
+        assert resp.content_type == "application/json; charset=utf-8"
 
     def test_target_status_is_passed_through(self):
         upstream = trawl_response(200, {"html": "<html>gone</html>", "statusCode": 404})

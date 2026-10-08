@@ -334,7 +334,7 @@ def handle_render(site: str | None = None):
         return f"Render request failed: {e}", 502
 
     return Response(
-        page.html, status=page.status_code, content_type=render.CONTENT_TYPE
+        page.content, status=page.status_code, content_type=page.content_type
     )
 
 

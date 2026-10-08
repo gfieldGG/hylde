@@ -69,8 +69,9 @@ URL-safe.
 Hydrus parsers cannot run JavaScript. `GET /render?url=<page url>` returns a
 page's HTML after JavaScript ran, rendered in a browser by a
 [trawl](https://github.com/germondai/trawl) instance, which also solves
-Cloudflare and similar challenges. The target's status code is passed through
-with `Content-Type: text/html; charset=utf-8`; nothing is cached.
+Cloudflare and similar challenges. The target's status code is passed through;
+nothing is cached. Non-HTML responses (e.g. JSON APIs) are returned raw with
+their original `Content-Type`.
 
 Relative links (`href`, `src`, `srcset`, …) are made absolute against the
 page's final URL, since Hydrus would resolve them against hylde's base url.
