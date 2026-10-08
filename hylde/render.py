@@ -9,7 +9,7 @@ import requests
 from lxml import etree  # type:ignore
 from lxml import html as lxml_html
 
-from hylde import lolg, settings
+from hylde import hydrus, lolg, settings
 
 HTML_CONTENT_TYPE = "text/html; charset=utf-8"
 
@@ -30,20 +30,27 @@ class RenderFailedError(Exception):
 
 
 @dataclass(frozen=True)
+class RenderRequest:
+    url: str
+    share_cookies: bool = False
+
+
+@dataclass(frozen=True)
 class RenderResponse:
     status_code: int
     content: str | bytes
     content_type: str
 
 
-def parse_url(args: Mapping[str, str]) -> str:
-    """Return the page URL to render from GET query parameters."""
+def parse_request(args: Mapping[str, str]) -> RenderRequest:
+    """Build the render request from GET query parameters."""
     url = args.get("url")
     if not url:
         raise RenderRequestError("Missing 'url' query parameter")
     if urlsplit(url).scheme not in ("http", "https"):
         raise RenderRequestError("'url' must be an http(s) URL.")
-    return url
+    share_cookies = args.get("cookies", "").lower() in ("1", "true", "yes")
+    return RenderRequest(url=url, share_cookies=share_cookies)
 
 
 def _error_message(resp: requests.Response) -> str:
@@ -171,8 +178,25 @@ def _response_content(result: dict, url: str) -> tuple[str | bytes, str]:
     return html, f"{media_type}; charset=utf-8"
 
 
-def render(url: str) -> RenderResponse:
+def _share_session(result: dict, url: str) -> None:
+    if not hydrus.is_configured():
+        lolg.warning("Cannot share cookies: render.hydrus_url/hydrus_key not set")
+        return
+    try:
+        hydrus.share_session(
+            result.get("cookies") or [],
+            result.get("userAgent") or "",
+            result.get("url") or url,
+        )
+    except (requests.RequestException, hydrus.HydrusAPIError) as e:
+        lolg.error(f"Sharing cookies with Hydrus failed: {e}")
+
+
+def render(url: str, share_cookies: bool = False) -> RenderResponse:
     """Render a page through trawl's /scrape, always using a browser.
+
+    With share_cookies, the browser session's cookies and user agent are copied
+    into Hydrus before returning; failing that is logged, not raised.
 
     Raises requests.RequestException on transport failure and RenderFailedError
     when trawl answers with an error. A pool-saturated trawl (429) is reported as
@@ -198,6 +222,8 @@ def render(url: str) -> RenderResponse:
         f"Rendered '{url}': status {result.get('statusCode')}, {content_type}, "
         f"tier {result.get('tier')}, {result.get('totalMs')} ms"
     )
+    if share_cookies:
+        _share_session(result, url)
     return RenderResponse(
         status_code=int(result.get("statusCode") or 200),
         content=content,

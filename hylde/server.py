@@ -314,15 +314,16 @@ def handle_render(site: str | None = None):
     parser per site.
     """
     try:
-        url = render.parse_url(request.args)
+        render_request = render.parse_request(request.args)
     except render.RenderRequestError as e:
         lolg.error(f"Invalid /render request: {e}")
         return str(e), 400
 
+    url = render_request.url
     if site:
         lolg.info(f"Render request for site '{site}'")
     try:
-        page = render.render(url)
+        page = render.render(url, share_cookies=render_request.share_cookies)
     except render.RenderFailedError as e:
         lolg.error(f"Rendering '{url}' failed: {e}")
         return str(e), e.status_code

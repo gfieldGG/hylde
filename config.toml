@@ -11,6 +11,8 @@ enabled = true
 [render]
 url = "http://trawl:8191"   # trawl instance used by /render
 timeout = 20                # seconds trawl may spend per page; challenge solves can still take ~40s
+hydrus_url = ""             # Hydrus Client API for /render?cookies=1, e.g. "http://hydrus:45869"
+hydrus_key = ""             # Client API key with the "Manage Cookies and Headers" permission
 
 [registry]
 downloader_patterns = [

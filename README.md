@@ -95,3 +95,18 @@ separates URL classes. In the site's URL class, set the API/redirect URL
 converter to percent-encode the URL and prepend
 `http://hylde:5000/render/<site>?url=`, then link the site's HTML parser to a
 URL class matching that hylde URL.
+
+With `&cookies=1`, the browser session's cookies for the page's host and the
+browser's `User-Agent` are copied into Hydrus via its Client API before the
+response is sent, so Hydrus's own follow-up requests (e.g. the final file
+download) use the same session. This replaces Hydrus's existing cookies of the
+same name for that domain. It needs a Client API key with the "Manage Cookies
+and Headers" permission:
+
+```toml
+[render]
+hydrus_url = "http://hydrus:45869"
+hydrus_key = "<access key>"
+```
+
+If sharing fails, the page is still returned and the error is logged.

@@ -17,17 +17,25 @@ def trawl_response(status_code: int, payload: object) -> MagicMock:
     return resp
 
 
-class TestParseUrl:
+class TestParseRequest:
     def test_missing_url(self):
         with pytest.raises(render.RenderRequestError, match="Missing 'url'"):
-            render.parse_url({})
+            render.parse_request({})
 
     def test_non_http_url(self):
         with pytest.raises(render.RenderRequestError, match="http"):
-            render.parse_url({"url": "file:///etc/passwd"})
+            render.parse_request({"url": "file:///etc/passwd"})
 
     def test_valid_url(self):
-        assert render.parse_url({"url": PAGE}) == PAGE
+        assert render.parse_request({"url": PAGE}) == render.RenderRequest(url=PAGE)
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [("1", True), ("true", True), ("YES", True), ("0", False), ("", False)],
+    )
+    def test_cookies_flag(self, value, expected):
+        req = render.parse_request({"url": PAGE, "cookies": value})
+        assert req.share_cookies is expected
 
 
 def body(fragment: str, head: str = "") -> str:
@@ -307,3 +315,61 @@ class TestRenderRoute:
             resp = self.get(url=PAGE)
         assert resp.status_code == 502
         assert b"refused" in resp.data
+
+    def shared_result(self) -> MagicMock:
+        return trawl_response(
+            200,
+            {
+                "html": body("ok"),
+                "statusCode": 200,
+                "url": "https://example.com/moved/1",
+                "cookies": [{"name": "sid", "value": "abc", "domain": ".example.com"}],
+                "userAgent": "Firefox/1",
+            },
+        )
+
+    def test_cookies_flag_shares_session_with_hydrus(self):
+        with (
+            patch("hylde.render.requests.post", return_value=self.shared_result()),
+            patch("hylde.render.hydrus.is_configured", return_value=True),
+            patch("hylde.render.hydrus.share_session") as share,
+        ):
+            resp = self.get(url=PAGE, cookies="1")
+        assert resp.status_code == 200
+        share.assert_called_once_with(
+            [{"name": "sid", "value": "abc", "domain": ".example.com"}],
+            "Firefox/1",
+            "https://example.com/moved/1",
+        )
+
+    def test_no_cookies_flag_does_not_share(self):
+        with (
+            patch("hylde.render.requests.post", return_value=self.shared_result()),
+            patch("hylde.render.hydrus.share_session") as share,
+        ):
+            self.get(url=PAGE)
+        share.assert_not_called()
+
+    def test_cookies_flag_without_hydrus_config_still_returns_page(self):
+        with (
+            patch("hylde.render.requests.post", return_value=self.shared_result()),
+            patch("hylde.render.hydrus.is_configured", return_value=False),
+            patch("hylde.render.hydrus.share_session") as share,
+        ):
+            resp = self.get(url=PAGE, cookies="1")
+        share.assert_not_called()
+        assert resp.status_code == 200
+
+    @pytest.mark.parametrize(
+        "error",
+        [requests.ConnectionError("refused"), render.hydrus.HydrusAPIError("403")],
+    )
+    def test_hydrus_failure_still_returns_page(self, error):
+        with (
+            patch("hylde.render.requests.post", return_value=self.shared_result()),
+            patch("hylde.render.hydrus.is_configured", return_value=True),
+            patch("hylde.render.hydrus.share_session", side_effect=error),
+        ):
+            resp = self.get(url=PAGE, cookies="1")
+        assert resp.status_code == 200
+        assert b"ok" in resp.data
